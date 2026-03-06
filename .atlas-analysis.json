@@ -1,0 +1,107 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Cardinal",
+  "projectDescription": "Measure red flags and procurement indicators using OCDS data",
+  "theme": "aspen",
+  "primaryColor": "#5d6c75",
+  "lightColor": "#b5bec1",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/workflow",
+              "concepts/settings"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/init",
+              "commands/prepare",
+              "commands/indicators",
+              "commands/coverage"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Red Flags",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "indicators/overview"
+            ]
+          },
+          {
+            "group": "Indicators",
+            "pages": [
+              "indicators/r003",
+              "indicators/r018",
+              "indicators/r024",
+              "indicators/r025",
+              "indicators/r028",
+              "indicators/r030",
+              "indicators/r035",
+              "indicators/r036",
+              "indicators/r038",
+              "indicators/r048",
+              "indicators/r058"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Rust Library",
+            "pages": [
+              "api/rust/overview",
+              "api/rust/indicators",
+              "api/rust/prepare",
+              "api/rust/coverage"
+            ]
+          },
+          {
+            "group": "Python Library",
+            "pages": [
+              "api/python/overview",
+              "api/python/coverage"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Calculate 11 procurement red flags from OCDS data",
+    "Prepare and correct OCDS data quality issues",
+    "Process line-delimited JSON files efficiently",
+    "Configurable thresholds and exclusions for indicators",
+    "Available as Rust library, CLI tool, and Python bindings"
+  ],
+  "publicApiSurface": [
+    "ocdscardinal init",
+    "ocdscardinal prepare",
+    "ocdscardinal indicators",
+    "ocdscardinal coverage",
+    "Indicators::run()",
+    "Prepare::run()",
+    "Coverage::run()",
+    "coverage() [Python]"
+  ]
+}

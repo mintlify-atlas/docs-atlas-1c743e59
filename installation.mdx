@@ -1,0 +1,316 @@
+---
+title: "Installation"
+description: "Install Cardinal using Cargo, pip, or npm"
+---
+
+## Overview
+
+Cardinal is distributed as a Rust crate and provides Python bindings through PyO3. You can install it using:
+
+- **Cargo** (Rust's package manager) for the CLI tool and Rust library
+- **pip** (Python's package manager) for Python bindings
+- **Building from source** for development or the latest features
+
+<Note>
+  Cardinal requires **OCDS 1.1** data (the version since 2017) formatted as compiled releases in line-delimited JSON files.
+</Note>
+
+## Install via Cargo
+
+The recommended way to install Cardinal is using Cargo, Rust's package manager.
+
+### Prerequisites
+
+You need Rust and Cargo installed on your system. If you don't have them:
+
+<Tabs>
+  <Tab title="Linux / macOS">
+    Install using rustup:
+    
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+    
+    Follow the on-screen instructions, then restart your terminal or run:
+    
+    ```bash
+    source $HOME/.cargo/env
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    1. Download and run [rustup-init.exe](https://rustup.rs/)
+    2. Follow the on-screen instructions
+    3. Restart your terminal
+  </Tab>
+</Tabs>
+
+Verify the installation:
+
+```bash
+rustc --version
+cargo --version
+```
+
+### Install Cardinal
+
+Install the `ocdscardinal` crate from [crates.io](https://crates.io/crates/ocdscardinal):
+
+```bash
+cargo install ocdscardinal
+```
+
+This compiles Cardinal and installs the `ocdscardinal` command-line tool to your Cargo bin directory (typically `~/.cargo/bin/`).
+
+### Verify Installation
+
+Check that Cardinal is installed correctly:
+
+```bash
+ocdscardinal --version
+```
+
+You should see output like:
+
+```
+ocdscardinal 0.0.8
+```
+
+### View Help
+
+Get an overview of available commands:
+
+```bash
+ocdscardinal --help
+```
+
+<Accordion title="Output">
+```
+Measure red flags and procurement indicators using OCDS data.
+
+Usage: ocdscardinal [OPTIONS] <COMMAND>
+
+Commands:
+  coverage    Count the number of times each field is non-empty in a line-delimited JSON file
+  prepare     Correct quality issues within OCDS compiled releases in a line-delimited JSON file
+  indicators  Calculate procurement indicators from OCDS compiled releases in a line-delimited JSON file
+  init        Write a default settings file for configuration
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...  Increase verbosity
+  -h, --help        Print help
+  -V, --version     Print version
+```
+</Accordion>
+
+## Install Python Bindings
+
+Cardinal provides Python bindings that allow you to use Cardinal as a Python library.
+
+### Prerequisites
+
+- Python 3.10 or later
+- pip (Python's package manager)
+
+### Install via pip
+
+<Warning>
+  Python bindings are currently **in development**. The PyPI package may not be available yet. Check the [GitHub repository](https://github.com/open-contracting/cardinal-rs) for the latest status.
+</Warning>
+
+Once available, install using pip:
+
+```bash
+pip install ocdscardinal
+```
+
+The Python package includes pre-compiled binaries for common platforms.
+
+### Using Python Bindings
+
+The Python API provides the same functionality as the CLI:
+
+```python
+import ocdscardinal
+
+# Initialize settings
+settings = ocdscardinal.Settings()
+
+# Prepare data
+prepare = ocdscardinal.Prepare()
+# ... (API documentation coming soon)
+
+# Calculate indicators
+indicators = ocdscardinal.Indicators()
+# ... (API documentation coming soon)
+```
+
+<Info>
+  Detailed Python API documentation is coming soon. For now, refer to the CLI documentation and adapt commands to Python function calls.
+</Info>
+
+## Build from Source
+
+For development or to use the latest unreleased features, you can build Cardinal from source.
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/open-contracting/cardinal-rs.git
+cd cardinal-rs
+```
+
+### Build with Cargo
+
+Build the release version:
+
+```bash
+cargo build --release
+```
+
+The compiled binary will be at `target/release/ocdscardinal`.
+
+### Run Without Installing
+
+You can run Cardinal directly from the repository:
+
+```bash
+cargo run --release -- --help
+```
+
+Replace `--help` with any Cardinal command.
+
+### Install Locally
+
+Install the locally built version:
+
+```bash
+cargo install --path .
+```
+
+### Build Python Bindings
+
+To build Python bindings from source, you need [maturin](https://www.maturin.rs/):
+
+```bash
+pip install maturin
+```
+
+Build and install in development mode:
+
+```bash
+maturin develop --release
+```
+
+Or build a wheel:
+
+```bash
+maturin build --release
+```
+
+## System Requirements
+
+Cardinal has minimal system requirements:
+
+- **Operating Systems**: Linux, macOS, Windows
+- **Memory**: Depends on dataset size, but Cardinal is memory-efficient. For most datasets, 2-4 GB RAM is sufficient
+- **Disk Space**: 
+  - CLI installation: ~10 MB
+  - Building from source: ~500 MB (includes build dependencies)
+- **CPU**: Multi-core processors benefit from Cardinal's parallel processing
+
+## Upgrading Cardinal
+
+### Upgrade Cargo Installation
+
+Reinstall to get the latest version:
+
+```bash
+cargo install ocdscardinal --force
+```
+
+### Upgrade Python Package
+
+Upgrade using pip:
+
+```bash
+pip install --upgrade ocdscardinal
+```
+
+## Troubleshooting
+
+### Command Not Found
+
+If you get `command not found: ocdscardinal` after installation:
+
+1. Ensure `~/.cargo/bin` is in your PATH:
+   ```bash
+   echo $PATH
+   ```
+
+2. Add it to your PATH if missing. Add this to `~/.bashrc` or `~/.zshrc`:
+   ```bash
+   export PATH="$HOME/.cargo/bin:$PATH"
+   ```
+
+3. Restart your terminal or run:
+   ```bash
+   source ~/.bashrc  # or source ~/.zshrc
+   ```
+
+### Build Failures
+
+If building from source fails:
+
+1. Ensure you have the latest Rust toolchain:
+   ```bash
+   rustup update
+   ```
+
+2. Check that you're using Rust edition 2024 (included in recent versions):
+   ```bash
+   rustc --version
+   ```
+
+3. Clear the build cache and try again:
+   ```bash
+   cargo clean
+   cargo build --release
+   ```
+
+### Python Import Errors
+
+If importing `ocdscardinal` in Python fails:
+
+1. Verify the package is installed:
+   ```bash
+   pip list | grep ocdscardinal
+   ```
+
+2. Ensure you're using Python 3.10 or later:
+   ```bash
+   python --version
+   ```
+
+3. Check for platform compatibility issues - some platforms may require building from source
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Run your first analysis with Cardinal
+  </Card>
+  
+  <Card title="Init Command" icon="gear" href="/commands/init">
+    Learn about initializing settings files
+  </Card>
+  
+  <Card title="Configuration" icon="sliders" href="/concepts/settings">
+    Understand Cardinal's configuration options
+  </Card>
+  
+  <Card title="GitHub Repository" icon="github" href="https://github.com/open-contracting/cardinal-rs">
+    View source code and report issues
+  </Card>
+</CardGroup>

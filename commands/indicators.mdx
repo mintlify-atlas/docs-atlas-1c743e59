@@ -1,0 +1,375 @@
+---
+title: cardinal indicators
+description: Calculate procurement indicators and red flags from OCDS data
+---
+
+The `indicators` command calculates procurement indicators and red flags from OCDS compiled releases. It analyzes contracting processes to identify suspicious patterns at the level of individual processes, buyers, procuring entities, and tenderers.
+
+## Command Syntax
+
+```bash
+cardinal indicators [OPTIONS] <FILE>
+```
+
+### Arguments
+
+<ParamField path="FILE" type="string" required>
+  The path to the input file (or `-` for standard input), in which each line is a contracting process as JSON text.
+</ParamField>
+
+### Options
+
+<ParamField path="--settings" type="string">
+  The path to the settings file. Use `-s` as a shorthand. If not provided, default settings are used.
+</ParamField>
+
+<ParamField path="--count" type="boolean" default="false">
+  Print the number of results per group to standard error. Use `-c` as a shorthand.
+</ParamField>
+
+<ParamField path="--no-meta" type="boolean" default="false">
+  Exclude the "Meta" key from the results object.
+</ParamField>
+
+<ParamField path="--map" type="boolean" default="false">
+  Include the "Maps" key, mapping contracting processes to organizations.
+</ParamField>
+
+<ParamField path="--verbose" type="flag">
+  Increase verbosity. Use `-v` as a shorthand. Can be repeated for more verbosity.
+</ParamField>
+
+## Output Format
+
+The command outputs a JSON object with results organized by group:
+
+```json
+{
+  "OCID": {
+    "ocds-6550wx-JRFPFA-DAF-CM-2021-0012": {
+      "R036": 1.0
+    }
+  },
+  "Buyer": {
+    "DO-RPE-55216": {
+      "R038": 0.8
+    }
+  },
+  "ProcuringEntity": {},
+  "Tenderer": {},
+  "Meta": {
+    "R024": {
+      "q1": 66.6667,
+      "q3": 100.0,
+      "lower_fence": 16.6667
+    }
+  }
+}
+```
+
+### Result Structure
+
+<Steps>
+  <Step title="Top-level groups">
+    Results are organized by:
+    - **OCID**: Contracting process identifiers
+    - **Buyer**: Buyer organization identifiers
+    - **ProcuringEntity**: Procuring entity identifiers
+    - **Tenderer**: Tenderer organization identifiers
+  </Step>
+  
+  <Step title="Identifiers">
+    Each group contains identifiers extracted from:
+    - **OCID**: `/ocid`
+    - **Buyer**: `/buyer/id`
+    - **ProcuringEntity**: `/tender/procuringEntity/id`
+    - **Tenderer**: `/bids/details[]/tenderers[]/id`
+  </Step>
+  
+  <Step title="Indicator results">
+    Each identifier has indicator codes as keys and decimal values as results. Indicators that didn't produce results are omitted.
+  </Step>
+  
+  <Step title="Metadata">
+    Unless `--no-meta` is set, a "Meta" key contains quartiles and fences used for outlier detection (rounded to 4 decimals).
+  </Step>
+  
+  <Step title="Mappings (optional)">
+    If `--map` is set, a "Maps" key contains mappings from contracting processes to organizations.
+  </Step>
+</Steps>
+
+## Usage Examples
+
+<CodeGroup>
+
+```bash Basic usage
+cardinal indicators prepared.jsonl > results.json
+```
+
+```bash With settings file
+cardinal indicators --settings settings.ini prepared.jsonl > results.json
+```
+
+```bash Show result counts
+cardinal indicators --count prepared.jsonl > results.json
+```
+
+```bash With mappings
+cardinal indicators --map prepared.jsonl > results.json
+```
+
+```bash Without metadata
+cardinal indicators --no-meta prepared.jsonl > results.json
+```
+
+```bash Using stdin
+cat prepared.jsonl | cardinal indicators - > results.json
+```
+
+</CodeGroup>
+
+### Example with Count Output
+
+With the `--count` flag, the command prints statistics to stderr:
+
+```bash
+cardinal indicators --count prepared.jsonl > results.json
+```
+
+Stderr output:
+```
+OCID: 1523
+Buyer: 245
+ProcuringEntity: 189
+Tenderer: 1876
+```
+
+## Available Indicators
+
+### Red Flags
+
+The following red flags are available. Enable them by adding their section to your settings file.
+
+| Code | Title | Description |
+|------|-------|-------------|
+| **R003** | Short submission period | The submission period is too short |
+| **R018** | Single bid received | Only one tenderer submitted a bid |
+| **R024** | Price close to winning bid | The percentage difference between the winning bid and second-lowest valid bid is a low outlier |
+| **R025** | Excessive unsuccessful bids | The ratio of winning bids to submitted bids for a top tenderer is a low outlier |
+| **R028** | Identical bid prices | Different tenderers submitted bids with the same price |
+| **R030** | Late bid won | The winning bid was received after the submission deadline |
+| **R035** | All except winning bid disqualified | Bids are disqualified if not submitted by the single tenderer of the winning bid |
+| **R036** | Lowest bid disqualified | The lowest submitted bid is disqualified, while the award criterion is price only |
+| **R038** | Excessive disqualified bids | The ratio of disqualified bids to submitted bids is a high outlier per buyer, procuring entity or tenderer |
+| **R048** | Heterogeneous supplier | The variety of items supplied by a tenderer is a high outlier |
+| **R058** | Heavily discounted bid | The percentage difference between the winning bid and second-lowest valid bid is a high outlier |
+
+<Note>
+For detailed methodology and configuration options for each indicator, refer to the individual indicator documentation pages.
+</Note>
+
+## Configuration
+
+Configure indicators through a settings file. Initialize one with:
+
+```bash
+cardinal init settings.ini
+```
+
+### Enable an Indicator
+
+Add a section with the indicator code:
+
+```ini
+[R024]
+
+[R036]
+
+[R038]
+threshold = 0.5
+```
+
+You can enable an indicator without setting any properties.
+
+### Disable an Indicator
+
+Delete or comment out the indicator section:
+
+```ini
+; [R024]
+; threshold = 0.05
+```
+
+### Global Exclusions
+
+Exclude procedures from all indicators based on procurement method:
+
+```ini
+[exclusions]
+procurement_method_details = Random Selection|Sorteo de Obras
+```
+
+### Price Comparison Configuration
+
+Some indicators compare bid prices. Configure which procurement methods should be included or excluded from price comparisons:
+
+#### Exclude from Price Comparisons
+
+```ini
+no_price_comparison_procurement_methods = Random Selection|Sorteo de Obras
+```
+
+#### Include in Price Comparisons
+
+```ini
+price_comparison_procurement_methods = Reverse Auction
+```
+
+A procedure is excluded from price comparisons if:
+- `no_price_comparison_procurement_methods` is set and `/tender/procurementMethodDetails` matches, OR
+- `price_comparison_procurement_methods` is set and `/tender/procurementMethodDetails` doesn't match
+
+### Currency Configuration
+
+Set the main currency for monetary comparisons:
+
+```ini
+currency = USD
+```
+
+Contracting processes using other currencies are excluded from indicators that compare monetary values.
+
+<Note>
+If not configured, the main currency is set to the first observed currency in the data.
+</Note>
+
+### Indicator-Specific Configuration
+
+Each indicator has its own configuration options. Example for R003:
+
+```ini
+[R003]
+threshold = 15
+procurement_methods = open|selective|limited
+
+[R003.procurement_method_details]
+emergency = 10
+international = 25
+```
+
+## Common Exclusions
+
+A contracting process is automatically excluded from all indicators if:
+
+- The `ocid` isn't a string
+- The contracting process (`/tender/status`) is cancelled
+- Relevant organization references don't set an `id`
+- Monetary values (where relevant) don't use the main currency
+
+## Workflow
+
+<Warning>
+Before running indicators, prepare your data with the `prepare` command to correct quality issues.
+</Warning>
+
+<Steps>
+  <Step title="Select indicators">
+    Edit your `settings.ini` file to enable or disable specific indicators based on your analysis needs.
+  </Step>
+  
+  <Step title="Run the command">
+    Calculate indicators:
+    ```bash
+    cardinal indicators --settings settings.ini prepared.jsonl > results.json
+    ```
+  </Step>
+  
+  <Step title="Review results">
+    Analyze the output JSON to identify flagged processes and organizations. Look for patterns and high-risk entities.
+  </Step>
+  
+  <Step title="Adjust configuration">
+    Fine-tune indicator thresholds and exclusions in `settings.ini` to reduce false positives based on your review.
+  </Step>
+  
+  <Step title="Iterate">
+    Repeat steps 2-4 until you're satisfied with the results.
+  </Step>
+</Steps>
+
+## Interpreting Results
+
+### Indicator Values
+
+All indicator outputs are decimal values:
+- **1.0**: Maximum flag strength (definite red flag)
+- **0.0 - 1.0**: Proportional values (e.g., 0.8 means 80% of bids were disqualified)
+- **Outlier indicators**: Values indicate how extreme the outlier is
+
+### Using the Meta Information
+
+The `Meta` key provides statistical context:
+
+```json
+"Meta": {
+  "R024": {
+    "q1": 66.6667,
+    "q3": 100.0,
+    "lower_fence": 16.6667
+  }
+}
+```
+
+- **q1**: First quartile (25th percentile)
+- **q3**: Third quartile (75th percentile)
+- **lower_fence/upper_fence**: Boundaries for outlier detection
+
+These values show how thresholds were calculated for outlier-based indicators.
+
+## Glossary
+
+<AccordionGroup>
+  <Accordion title="Bid">
+    An offer made by an economic operator as part of a contracting process. Also known as a *tender*.
+  </Accordion>
+  
+  <Accordion title="Bidder / Tenderer">
+    An economic operator that submitted one or more bids as part of a contracting process.
+  </Accordion>
+  
+  <Accordion title="Buyer">
+    The organization aiming to conclude a contract with an economic operator or to use the goods, services or works resulting from the contract.
+  </Accordion>
+  
+  <Accordion title="Contracting Process">
+    All the actions aimed at implementing one or more contracts, including tendering, awarding, contracting and implementation. Also known as a *procedure*.
+  </Accordion>
+  
+  <Accordion title="Economic Operator">
+    A person or organization (or group) that offers goods, services or works. Also known as a *business*, *contractor*, *service provider*, *supplier* or *undertaking*.
+  </Accordion>
+  
+  <Accordion title="Procuring Entity">
+    The organization managing the contracting process. An organization can be both a buyer and a procuring entity.
+  </Accordion>
+  
+  <Accordion title="Submitted (bid)">
+    A bid is submitted if its status is pending, valid, or disqualified. It is not submitted if its status is invited or withdrawn.
+  </Accordion>
+  
+  <Accordion title="Winner">
+    A tenderer that is awarded a contract.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prepare Command" icon="wrench" href="/commands/prepare">
+    Learn how to prepare data before calculating indicators
+  </Card>
+  <Card title="Coverage Command" icon="chart-line" href="/commands/coverage">
+    Analyze field coverage to ensure data completeness
+  </Card>
+</CardGroup>

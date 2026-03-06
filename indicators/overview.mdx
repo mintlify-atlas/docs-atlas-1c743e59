@@ -1,0 +1,378 @@
+---
+title: Red Flag Indicators Overview
+description: Learn about Cardinal's 11 procurement red flag indicators, output format, and how to interpret results
+---
+
+## What Are Red Flag Indicators?
+
+Cardinal calculates 11 procurement indicators designed to identify potential red flags in contracting processes. These indicators detect patterns that may suggest corruption, collusion, or other irregularities in public procurement, such as:
+
+- Bid manipulation and collusion between tenderers
+- Suspicious pricing patterns
+- Irregular disqualification of bids
+- Procedural irregularities
+
+Red flags are organized into four **groups** based on what entity they analyze:
+
+| Group | Description | Identifier Field |
+|-------|-------------|-----------------|
+| **OCID** | Contracting process indicators | `/ocid` |
+| **Buyer** | Buyer behavior indicators | `/buyer/id` |
+| **ProcuringEntity** | Procuring entity behavior indicators | `/tender/procuringEntity/id` |
+| **Tenderer** | Tenderer behavior indicators | `/bids/details[]/tenderers[]/id` |
+
+## Running the Indicators Command
+
+To calculate indicators, use the `indicators` command with your prepared OCDS data:
+
+```bash
+ocdscardinal indicators --settings settings.ini prepared.jsonl > results.json
+```
+
+<Tip>
+Before running indicators, ensure you've prepared your data with the `prepare` command to correct quality issues and standardize the format.
+</Tip>
+
+### Command Options
+
+<ParamField path="--settings" type="string" required>
+  Path to the settings file containing indicator configuration
+</ParamField>
+
+<ParamField path="--verbose" type="flag">
+  Increase verbosity level (use multiple times: `-v`, `-vv`, `-vvv`)
+</ParamField>
+
+<ParamField path="--count" type="flag">
+  Print the number of results per group to standard error
+</ParamField>
+
+<ParamField path="--no-meta" type="flag">
+  Exclude the `Meta` key from the results object
+</ParamField>
+
+<ParamField path="--map" type="flag">
+  Include the `Maps` key, mapping contracting processes to organizations
+</ParamField>
+
+## Understanding the Output Format
+
+The `indicators` command produces JSON output organized hierarchically by **group**, **identifier**, **indicator code**, and **value**.
+
+### Basic Structure
+
+```json
+{
+  "OCID": {
+    "ocds-6550wx-JRFPFA-DAF-CM-2021-0012": {
+      "R036": 1.0
+    }
+  },
+  "Buyer": {
+    "DO-RPE-55216": {
+      "R038": 0.8
+    }
+  },
+  "ProcuringEntity": {},
+  "Tenderer": {},
+  "Meta": {
+    "R024": {
+      "q1": 66.6667,
+      "q3": 100.0,
+      "lower_fence": 16.6667
+    }
+  }
+}
+```
+
+### Output Components
+
+<Steps>
+  <Step title="Top-level groups">
+    The first level contains four keys representing different entity types: `OCID`, `Buyer`, `ProcuringEntity`, and `Tenderer`.
+  </Step>
+  
+  <Step title="Identifiers">
+    Within each group, keys are identifiers extracted from your OCDS data (e.g., contracting process IDs, organization IDs).
+  </Step>
+  
+  <Step title="Indicator codes">
+    Within each identifier, keys are indicator codes (e.g., `R003`, `R024`) that raised a red flag for that entity.
+  </Step>
+  
+  <Step title="Values">
+    Each indicator code maps to a numeric value. The meaning depends on the indicator:
+    - Binary flags: `1.0` indicates the red flag is present
+    - Ratios/percentages: Values between `0.0` and `1.0`
+    - Counts: Integer values as decimals
+  </Step>
+</Steps>
+
+### Metadata Section
+
+The `Meta` key provides statistical information about indicators that use outlier detection:
+
+```json
+{
+  "Meta": {
+    "R024": {
+      "q1": 66.6667,        // First quartile
+      "q3": 100.0,          // Third quartile
+      "lower_fence": 16.6667 // Lower fence for outlier detection
+    }
+  }
+}
+```
+
+<Info>
+Use `--no-meta` to exclude metadata if you only need the indicator results.
+</Info>
+
+## Interpreting Results
+
+### When an Indicator Appears
+
+An indicator code appears in the output **only if** a red flag was raised. If an indicator didn't produce a result — either because it couldn't be calculated or no red flag was detected — the code won't appear.
+
+### Reading Values
+
+The output value depends on the indicator type:
+
+<Tabs>
+  <Tab title="Binary Indicators">
+    Value is always `1.0` when present, indicating the red flag exists.
+    
+    **Example**: R035 (All except winning bid disqualified), R036 (Lowest bid disqualified)
+    
+    ```json
+    {
+      "OCID": {
+        "ocds-123": {
+          "R036": 1.0  // Red flag present
+        }
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Ratio Indicators">
+    Value between `0.0` and `1.0` representing a percentage or ratio.
+    
+    **Example**: R025 (Ratio of winning bids to submitted bids), R038 (Ratio of disqualified bids)
+    
+    ```json
+    {
+      "Tenderer": {
+        "SUPPLIER-001": {
+          "R025": 0.15  // Only 15% of bids won
+        }
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Count Indicators">
+    Numeric count as a decimal value.
+    
+    **Example**: R028 (Number of bids with identical prices), R048 (Variety of items supplied)
+    
+    ```json
+    {
+      "OCID": {
+        "ocds-456": {
+          "R028": 3.0  // 3 bids with same price
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration Overview
+
+All indicators can be configured in the `settings.ini` file. Configuration is optional — Cardinal provides sensible defaults.
+
+### Enabling an Indicator
+
+To enable an indicator, create a section with its code:
+
+```ini
+[R024]
+```
+
+You don't need to set any properties unless you want to customize behavior.
+
+### Disabling an Indicator
+
+To disable an indicator, remove or comment out its section:
+
+```ini
+; [R024]
+; threshold = 0.05
+```
+
+### Global Settings
+
+Some settings apply to all indicators:
+
+```ini
+# Main currency for monetary comparisons
+currency = USD
+
+# Exclude procedures globally
+[exclusions]
+procurement_method_details = Random Selection|Sorteo de Obras
+
+# Exclude procedures from price comparisons only
+no_price_comparison_procurement_methods = Random Selection|Sorteo de Obras
+
+# Or, include only specific procedures in price comparisons
+price_comparison_procurement_methods = Reverse Auction
+```
+
+<Note>
+Each indicator's documentation page describes its individual configuration options and defaults.
+</Note>
+
+## All Red Flag Indicators
+
+Cardinal includes 11 red flag indicators that detect various suspicious patterns:
+
+<CardGroup cols={2}>
+  <Card title="R003: Short Submission Period" icon="clock" href="/indicators/r003">
+    Contracting processes with submission periods that are too short
+  </Card>
+  
+  <Card title="R018: Single Bid Received" icon="file" href="/indicators/r018">
+    Only one tenderer submitted a bid
+  </Card>
+  
+  <Card title="R024: Price Close to Winning Bid" icon="chart-line" href="/indicators/r024">
+    Second-lowest bid is suspiciously close to the winning bid (low outlier)
+  </Card>
+  
+  <Card title="R025: Excessive Unsuccessful Bids" icon="xmark" href="/indicators/r025">
+    Tenderer has an unusually low ratio of winning bids (low outlier)
+  </Card>
+  
+  <Card title="R028: Identical Bid Prices" icon="equals" href="/indicators/r028">
+    Different tenderers submitted bids with the same price
+  </Card>
+  
+  <Card title="R030: Late Bid Won" icon="calendar-xmark" href="/indicators/r030">
+    The winning bid was received after the submission deadline
+  </Card>
+  
+  <Card title="R035: All Except Winner Disqualified" icon="ban" href="/indicators/r035">
+    All bids are disqualified except those from the winner
+  </Card>
+  
+  <Card title="R036: Lowest Bid Disqualified" icon="arrow-down" href="/indicators/r036">
+    The lowest bid is disqualified when award criterion is price only
+  </Card>
+  
+  <Card title="R038: Excessive Disqualified Bids" icon="circle-xmark" href="/indicators/r038">
+    High ratio of disqualified bids per buyer, procuring entity, or tenderer (high outlier)
+  </Card>
+  
+  <Card title="R048: Heterogeneous Supplier" icon="boxes-stacked" href="/indicators/r048">
+    Tenderer supplies an unusually wide variety of items (high outlier)
+  </Card>
+  
+  <Card title="R058: Heavily Discounted Bid" icon="percent" href="/indicators/r058">
+    Winning bid is significantly lower than second-lowest bid (high outlier)
+  </Card>
+</CardGroup>
+
+## Indicator Summary Table
+
+| Code | Title | Group | Type | Description |
+|------|-------|-------|------|-------------|
+| R003 | Short submission period | OCID | Threshold | Submission period is too short |
+| R018 | Single bid received | OCID | Binary | Only one tenderer submitted a bid |
+| R024 | Price close to winning bid | OCID | Outlier | Second-lowest bid too close to winner (low) |
+| R025 | Excessive unsuccessful bids | Tenderer | Outlier | Low ratio of winning bids (low) |
+| R028 | Identical bid prices | OCID | Count | Different tenderers with same price |
+| R030 | Late bid won | OCID | Binary | Winner received after deadline |
+| R035 | All except winning bid disqualified | OCID | Binary | Only winner's bid not disqualified |
+| R036 | Lowest bid disqualified | OCID | Binary | Lowest bid disqualified, price-only award |
+| R038 | Excessive disqualified bids | Buyer, ProcuringEntity, Tenderer | Outlier | High ratio of disqualified bids (high) |
+| R048 | Heterogeneous supplier | Tenderer | Outlier | Wide variety of items supplied (high) |
+| R058 | Heavily discounted bid | OCID | Outlier | Winner much lower than second bid (high) |
+
+## Common Exclusions
+
+All indicators exclude contracting processes where:
+
+<AccordionGroup>
+  <Accordion title="Invalid or missing data">
+    - The `ocid` is not a string
+    - Relevant organization references don't set an `id`
+    - Required fields are missing or malformed
+  </Accordion>
+  
+  <Accordion title="Cancelled contracting process">
+    - The `/tender/status` is `cancelled`
+  </Accordion>
+  
+  <Accordion title="Currency mismatch">
+    - Monetary values don't use the main currency
+    - Configure the main currency with: `currency = USD`
+    - Otherwise, the first observed currency is used
+  </Accordion>
+  
+  <Accordion title="Global exclusions">
+    - Procedures matching excluded `procurement_method_details`
+    - Configured in the `[exclusions]` section
+  </Accordion>
+</AccordionGroup>
+
+## Workflow
+
+Follow these steps to analyze your procurement data:
+
+<Steps>
+  <Step title="Select indicators">
+    Enable or disable indicators in your `settings.ini` file. If you used the `init` command, all indicators are enabled by default.
+  </Step>
+  
+  <Step title="Run the command">
+    Execute the indicators command with your prepared data:
+    
+    ```bash
+    ocdscardinal indicators --settings settings.ini prepared.jsonl > results.json
+    ```
+  </Step>
+  
+  <Step title="Review the results">
+    Examine the JSON output to identify flagged entities. Cross-reference with your source data to investigate potential issues.
+  </Step>
+  
+  <Step title="Adjust settings">
+    Modify indicator thresholds and configuration to reduce false positives based on your review. Iterate until satisfied with the results.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Settings" icon="sliders" href="/concepts/settings">
+    Learn about all configuration options and how to customize indicators
+  </Card>
+  
+  <Card title="Explore Indicators" icon="flag" href="/indicators/r003">
+    Read detailed documentation for each individual red flag indicator
+  </Card>
+  
+  <Card title="Commands Reference" icon="terminal" href="/commands/indicators">
+    View full command-line options and examples
+  </Card>
+  
+  <Card title="Prepare Data" icon="wrench" href="/commands/prepare">
+    Ensure your data is properly prepared before running indicators
+  </Card>
+</CardGroup>
+
+<Note>
+**Need help?** Contact [James McKinney](mailto:jmckinney@open-contracting.org), OCP's Head of Technology, with questions or feedback.
+</Note>

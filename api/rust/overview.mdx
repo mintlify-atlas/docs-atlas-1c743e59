@@ -1,0 +1,175 @@
+---
+title: Rust Library Overview
+description: Learn how to use Cardinal as a Rust library in your projects
+---
+
+Cardinal can be used as a Rust library to analyze OCDS procurement data programmatically. The library provides three main modules for data processing and analysis.
+
+## Installation
+
+Add Cardinal to your `Cargo.toml`:
+
+```toml
+[dependencies]
+ocdscardinal = "0.0.8"
+```
+
+The library uses these core dependencies:
+- `serde_json` for JSON processing
+- `indexmap` for ordered maps
+- `anyhow` for error handling
+
+## Quick Start
+
+Here's a basic example of using Cardinal to calculate indicators:
+
+```rust
+use std::fs::File;
+use std::io::BufReader;
+use ocdscardinal::{Indicators, Settings};
+
+fn main() -> Result<(), anyhow::Error> {
+    // Open line-delimited JSON file
+    let file = File::open("releases.jsonl")?;
+    let reader = BufReader::new(file);
+    
+    // Configure settings
+    let mut settings = Settings::default();
+    settings.R036 = Some(Default::default());
+    settings.R038 = Some(Default::default());
+    
+    // Run indicators calculation
+    let results = Indicators::run(reader, settings, &false)?;
+    
+    // Access results
+    for (group, ocids) in results.results() {
+        println!("Group: {:?}", group);
+        for (id, indicators) in ocids {
+            println!("  {}: {:?}", id, indicators);
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Core Types
+
+### Settings
+
+The `Settings` struct configures all Cardinal operations:
+
+```rust
+pub struct Settings {
+    // General settings
+    pub currency: Option<String>,
+    pub exclusions: Option<Exclusions>,
+    
+    // Data preparation
+    pub defaults: Option<Defaults>,
+    pub redactions: Option<Redactions>,
+    pub corrections: Option<Corrections>,
+    pub modifications: Option<Modifications>,
+    pub codelists: Option<HashMap<Codelist, HashMap<String, String>>>,
+    
+    // Indicators (R003-R058)
+    pub R003: Option<R003>,
+    pub R018: Option<R018>,
+    // ... and more
+}
+```
+
+### Group
+
+Results are grouped by entity type:
+
+```rust
+pub enum Group {
+    OCID,              // Contracting process
+    Buyer,             // Buying organization
+    ProcuringEntity,   // Procuring organization
+    Tenderer,          // Bidding organization
+}
+```
+
+### Indicator
+
+Available red flag indicators:
+
+```rust
+pub enum Indicator {
+    R003,  // Submission period
+    R018,  // No competitive bids
+    R024,  // Winner's bid close to next lowest
+    R025,  // Frequent winner
+    R028,  // Single bidder wins
+    R030,  // Bids differ by same amount
+    R035,  // Supplier awarded many contracts
+    R036,  // Supplier offered identical prices
+    R038,  // Many disqualified bids
+    R048,  // Classification patterns
+    R058,  // Winner's bid close to next lowest (alternative)
+}
+```
+
+## Modules
+
+Cardinal provides three main modules:
+
+<CardGroup cols={3}>
+  <Card title="Indicators" icon="flag" href="/api/rust/indicators">
+    Calculate red flags and procurement indicators
+  </Card>
+  <Card title="Prepare" icon="screwdriver-wrench" href="/api/rust/prepare">
+    Correct and normalize OCDS data
+  </Card>
+  <Card title="Coverage" icon="chart-simple" href="/api/rust/coverage">
+    Analyze field coverage in datasets
+  </Card>
+</CardGroup>
+
+## Input Format
+
+All Cardinal functions expect **line-delimited JSON** (JSONL) where each line contains a single OCDS release:
+
+```json
+{"ocid": "ocds-213czf-1", "tender": {...}, "awards": [...]}
+{"ocid": "ocds-213czf-2", "tender": {...}, "awards": [...]}
+```
+
+<Info>
+The input must be buffered (`BufRead`) to enable parallel processing for performance.
+</Info>
+
+## Error Handling
+
+All Cardinal functions return `Result<T, anyhow::Error>`. The library handles:
+
+- **Invalid JSON**: Lines with malformed JSON are skipped with a warning
+- **I/O errors**: File read errors are logged and skipped
+- **Empty lines**: Whitespace-only lines are silently skipped
+
+```rust
+match Indicators::run(reader, settings, &false) {
+    Ok(results) => {
+        // Process results
+    }
+    Err(e) => {
+        eprintln!("Error: {:#}", e);
+    }
+}
+```
+
+## Thread Safety
+
+Cardinal uses [Rayon](https://docs.rs/rayon) for parallel processing. All operations are thread-safe and automatically utilize available CPU cores.
+
+<Tip>
+Control parallelism with the `RAYON_NUM_THREADS` environment variable if needed.
+</Tip>
+
+## Next Steps
+
+- Learn about [Indicators calculation](/api/rust/indicators)
+- Explore [Data preparation](/api/rust/prepare)
+- Check [Coverage analysis](/api/rust/coverage)

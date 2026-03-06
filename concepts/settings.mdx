@@ -1,0 +1,742 @@
+---
+title: Settings File Reference
+description: Complete reference for configuring Cardinal's prepare and indicators commands
+---
+
+A settings file configures the behavior of Cardinal's [`prepare`](/cli/prepare) and [`indicators`](/cli/indicators) commands. Use the `--settings` option to provide the path to your configuration file.
+
+## Quick Start
+
+Generate a default settings file with all options documented:
+
+```bash
+ocdscardinal init settings.ini
+```
+
+This creates a file with all configuration options commented out, showing recommended defaults and examples.
+
+---
+
+## File Format
+
+Settings files use **INI format**, a simple text-based configuration format.
+
+### Basic Structure
+
+```ini
+# This is a comment (using # or ;)
+; This is also a comment
+
+[SectionName]
+property_name = value
+another_property = value
+```
+
+### Sections
+
+A section starts with a name in square brackets:
+
+```ini
+[R035]
+```
+
+### Properties
+
+Properties are key-value pairs separated by `=`:
+
+```ini
+[R035]
+threshold = 1
+```
+
+### Comments
+
+Document your configuration using `;` or `#`:
+
+```ini
+[R035]
+; Increase the threshold to reduce false positives
+threshold = 3
+```
+
+<Note>
+  All settings are **optional**. Cardinal provides sensible defaults for all configurations.
+</Note>
+
+---
+
+## Global Settings
+
+These settings apply to the `indicators` command and affect all indicators.
+
+### Main Currency
+
+Specify the currency used in your dataset:
+
+```ini
+currency = USD
+```
+
+**Default:** The first observed currency in the data
+
+<Warning>
+  Contracting processes using different currencies are excluded from indicator calculations. Set this to match your primary dataset currency.
+</Warning>
+
+### Price Comparison Controls
+
+Some procurement methods shouldn't have their bid prices compared (e.g., random selection, predetermined prices).
+
+#### Exclude Specific Methods
+
+Exclude methods from price comparisons:
+
+```ini
+no_price_comparison_procurement_methods = Random Selection|Sorteo de Obras
+```
+
+**Format:** Pipe-separated list (`|`) of values from `/tender/procurementMethodDetails`
+
+#### Include Only Specific Methods
+
+Alternatively, specify an allow-list:
+
+```ini
+price_comparison_procurement_methods = Reverse Auction|Open Tender
+```
+
+<Note>
+  If both are set, `price_comparison_procurement_methods` takes precedence and `no_price_comparison_procurement_methods` is ignored.
+</Note>
+
+---
+
+## Output Settings
+
+Control what information Cardinal includes in its output.
+
+```ini
+[output]
+info_currency_mismatches = true
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `info_currency_mismatches` | boolean | Log warnings when currency mismatches are detected |
+
+---
+
+## Prepare Command Settings
+
+These settings configure the `prepare` command's data quality corrections.
+
+### Defaults
+
+Fill in missing values when fields aren't set:
+
+```ini
+[defaults]
+currency = USD
+item_classification_scheme = UNSPSC
+bid_status = valid
+award_status = active
+party_roles = true
+```
+
+| Property | Fills | Description |
+|----------|-------|-------------|
+| `currency` | `/bids/details[]/value/currency` | Default currency for bid values |
+| `item_classification_scheme` | `/bids/details[]/items[]/classification/scheme`<br/>`/awards[]/items[]/classification/scheme` | Default classification scheme (e.g., UNSPSC, CPV) |
+| `bid_status` | `/bids/details[]/status` | Default bid status when not set |
+| `award_status` | `/awards[]/status` | Default award status when not set |
+| `party_roles` | `/parties[]/roles[]` | Auto-populate party roles from organization references |
+
+**Example use case:**
+
+If your data consistently omits bid status but you know all bids are valid:
+
+```ini
+[defaults]
+bid_status = valid
+```
+
+### Redactions
+
+Remove incorrect or placeholder values from the data:
+
+```ini
+[redactions]
+amount = 0|99999999
+organization_id = placeholder|dummy-value|N/A
+```
+
+| Property | Redacts from | Description |
+|----------|--------------|-------------|
+| `amount` | `/bids/details[]/value/amount` | Pipe-separated list of monetary amounts to remove (e.g., placeholder values) |
+| `organization_id` | `/parties[]/id`<br/>`/buyer/id`<br/>`/tender/procuringEntity/id`<br/>`/bids/details[]/tenderers[]/id`<br/>`/awards[]/suppliers[]/id` | Pipe-separated list of organization IDs to remove (e.g., placeholder values) |
+
+<Warning>
+  Redacted values are **removed** from the output. This ensures they don't affect indicator calculations (e.g., preventing "lowest bid" from being incorrectly set to 0).
+</Warning>
+
+### Corrections
+
+Apply logical corrections to improve data accuracy:
+
+```ini
+[corrections]
+award_status_by_contract_status = true
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `award_status_by_contract_status` | boolean | Change award status to "cancelled" if all related contracts are cancelled |
+
+**When to use this:**
+
+Some publishers bundle multiple decisions into one award object and use contracts to represent individual decisions. If all contracts are cancelled, the award should be considered cancelled too.
+
+### Modifications
+
+Transform data to improve consistency and usability:
+
+```ini
+[modifications]
+move_auctions = true
+prefix_buyer_or_procuring_entity_id = DO-UC-
+prefix_tenderer_or_supplier_id = DO-RPE-
+split_procurement_method_details = -
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `move_auctions` | boolean | Move auction bids from `/auctions[]/stages[]/bids[]` to `/bids/details[]` |
+| `prefix_buyer_or_procuring_entity_id` | string | Prefix to add to `/buyer/id` and `/tender/procuringEntity/id` |
+| `prefix_tenderer_or_supplier_id` | string | Prefix to add to `/bids/details[]/tenderers[]/id` and `/awards[]/suppliers[]/id` |
+| `split_procurement_method_details` | string | Separator to split `/tender/procurementMethodDetails` on, keeping only the prefix |
+
+**Example: Fixing ID mismatches**
+
+If `/parties[]/id` includes a scheme prefix but organization references don't:
+
+```ini
+# /parties[]/id: "DO-RPE-1422"
+# /bids/details[]/tenderers[]/id: "1422"
+
+[modifications]
+prefix_tenderer_or_supplier_id = DO-RPE-
+# Now both will be "DO-RPE-1422"
+```
+
+**Example: Standardizing procurement method details**
+
+If values are formatted as `{category} - {detail}`:
+
+```ini
+# Input: "Open Tender - International"
+# Output: "Open Tender"
+
+[modifications]
+split_procurement_method_details = -
+```
+
+### Codelists
+
+Remap non-standard codes to standard OCDS codes:
+
+```ini
+[codelists.bid_status]
+Qualified = valid
+Disqualified = disqualified
+InTreatment = pending
+
+[codelists.award_status]
+Active = active
+Cancelled = cancelled
+Unsuccessful = unsuccessful
+```
+
+**Supported codelists:**
+
+- `[codelists.bid_status]`: Remap `/bids/details[]/status` values
+- `[codelists.award_status]`: Remap `/awards[]/status` values
+
+**Valid OCDS codes:**
+
+| Field | Valid Codes |
+|-------|-------------|
+| bid_status | `invited`, `pending`, `valid`, `disqualified`, `withdrawn` |
+| award_status | `pending`, `active`, `cancelled`, `unsuccessful` |
+
+---
+
+## Indicators Command Settings
+
+These settings configure individual indicators and global exclusions.
+
+### Global Exclusions
+
+Exclude contracting processes from **all indicators** based on procurement method:
+
+```ini
+[exclusions]
+procurement_method_details = Random Selection|Sorteo de Obras
+```
+
+| Property | Description |
+|----------|-------------|
+| `procurement_method_details` | Pipe-separated list of `/tender/procurementMethodDetails` values to exclude |
+
+<Accordion title="When to use exclusions">
+  Use global exclusions for:
+  - **Methodologically inappropriate procedures**: e.g., random selection where competition isn't expected
+  - **Quality issues**: e.g., procurement methods with known data problems
+  - **Out-of-scope procedures**: e.g., framework agreements or direct awards
+</Accordion>
+
+### Enabling/Disabling Indicators
+
+To **enable** an indicator, add its section:
+
+```ini
+[R024]
+```
+
+To **disable** an indicator, remove or comment out its section:
+
+```ini
+; [R024]
+; threshold = 0.05
+```
+
+<Note>
+  By default, **no indicators are enabled** unless you include their section in the settings file.
+</Note>
+
+---
+
+## Indicator-Specific Settings
+
+Each indicator has its own configuration section. Below are all available indicators and their settings.
+
+### R003: Short Submission Period
+
+Flags contracting processes where the submission period is too short.
+
+```ini
+[R003]
+threshold = 15
+procurement_methods = open|selective|limited
+
+[R003.procurement_method_details]
+emergency = 10
+international = 25
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `threshold` | integer | 15 | Minimum acceptable days between tender publication and submission deadline |
+| `procurement_methods` | string | (none) | Pipe-separated list of procurement methods to analyze |
+
+**Per-method thresholds:**
+
+Set different thresholds for specific procurement method details:
+
+```ini
+[R003.procurement_method_details]
+emergency = 10         # Emergency procedures: 10 days minimum
+international = 25     # International tenders: 25 days minimum
+```
+
+### R018: Single Bid Received
+
+Flags contracting processes where only one tenderer submitted a bid.
+
+```ini
+[R018]
+procurement_methods = open|selective
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `procurement_methods` | string | Pipe-separated list of procurement methods to analyze (empty = all methods) |
+
+### R024: Price Close to Winning Bid
+
+Flags contracting processes where the second-lowest valid bid is suspiciously close to the winning bid.
+
+```ini
+[R024]
+threshold = 0.05
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `threshold` | float | 0.05 | Minimum percentage difference threshold (5% = 0.05) |
+
+**How it works:**
+
+Calculates the percentage difference between the winning bid and second-lowest valid bid. Flags as a low outlier using the interquartile range method.
+
+<Note>
+  This is an **outlier-based indicator**. The threshold defines what percentage difference is considered suspiciously low relative to the dataset distribution.
+</Note>
+
+### R025: Excessive Unsuccessful Bids
+
+Flags tenderers with an unusually low win rate.
+
+```ini
+[R025]
+percentile = 75
+threshold = 0.05
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `percentile` | integer | 75 | Percentile for identifying "top tenderers" (75 = 75th percentile by bid count) |
+| `threshold` | float | 0.05 | Minimum win ratio threshold (5% = 0.05) |
+
+**How it works:**
+
+1. Identifies top tenderers (by bid count, at specified percentile)
+2. Calculates win ratio: `winning bids / submitted bids`
+3. Flags tenderers with win ratios that are low outliers
+
+### R028: Identical Bid Prices
+
+Flags contracting processes where different tenderers submitted bids with identical prices.
+
+```ini
+[R028]
+# No configuration options
+```
+
+This indicator has no configurable settings—it simply detects when two or more different tenderers submit bids with the exact same price and currency.
+
+### R030: Late Bid Won
+
+Flags contracting processes where the winning bid was received after the submission deadline.
+
+```ini
+[R030]
+# No configuration options
+```
+
+This indicator has no configurable settings—it detects when `/bids/details[]/date` is after `/tender/tenderPeriod/endDate` for a winning bid.
+
+### R035: All Except Winning Bid Disqualified
+
+Flags contracting processes where all non-winning bids are disqualified.
+
+```ini
+[R035]
+threshold = 1
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `threshold` | integer | 1 | Minimum number of disqualified non-winning bids to trigger the flag |
+
+**Example:**
+
+- `threshold = 1`: Flag if at least 1 non-winning bid is disqualified (and all others are too)
+- `threshold = 3`: Flag only if at least 3 non-winning bids are disqualified
+
+<Accordion title="Adjusting for your jurisdiction">
+  If it's common in your jurisdiction to have a few disqualified bids in competitive processes, increase the threshold:
+
+  ```ini
+  [R035]
+  threshold = 3  # Only flag when 3+ non-winning bids are ALL disqualified
+  ```
+</Accordion>
+
+### R036: Lowest Bid Disqualified
+
+Flags contracting processes where the lowest submitted bid is disqualified while the award criterion is price only.
+
+```ini
+[R036]
+# No configuration options
+```
+
+This indicator has no configurable settings. It's excluded from price comparison controls (see [Global Settings](#price-comparison-controls)).
+
+### R038: Excessive Disqualified Bids
+
+Flags buyers, procuring entities, or tenderers with unusually high disqualification rates.
+
+```ini
+[R038]
+threshold = 0.5
+minimum_submitted_bids = 2
+minimum_contracting_processes = 2
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `threshold` | float | 0.5 | Minimum disqualification ratio threshold (50% = 0.5) |
+| `minimum_submitted_bids` | integer | 2 | Minimum submitted bids required per entity to be analyzed |
+| `minimum_contracting_processes` | integer | 2 | Minimum contracting processes required per entity to be analyzed |
+
+**How it works:**
+
+Calculates disqualification ratio: `disqualified bids / submitted bids`
+
+Flags entities (buyers, procuring entities, or tenderers) where this ratio is a high outlier.
+
+**Results are grouped by:**
+- **Buyer**: Disqualification rate per `/buyer/id`
+- **ProcuringEntity**: Disqualification rate per `/tender/procuringEntity/id`
+- **Tenderer**: Disqualification rate per `/bids/details[]/tenderers[]/id`
+
+### R048: Heterogeneous Supplier
+
+Flags tenderers that supply an unusually diverse variety of product/service categories.
+
+```ini
+[R048]
+digits = 2
+threshold = 10
+minimum_contracting_processes = 20
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `digits` | integer | 2 | Number of leading digits from classification ID to compare (2 = segment level) |
+| `threshold` | integer | 10 | Minimum number of distinct categories to trigger flag |
+| `minimum_contracting_processes` | integer | 20 | Minimum contracting processes required per tenderer to be analyzed |
+
+**How it works:**
+
+1. Extracts classification codes from `/awards[]/items[]/classification/id`
+2. Truncates to specified number of digits (e.g., "42131804" → "42")
+3. Counts distinct codes per tenderer
+4. Flags tenderers with counts that are high outliers
+
+**Example with UNSPSC:**
+
+```ini
+[R048]
+digits = 2  # Segment level (e.g., "42" = Medical equipment)
+```
+
+Classification "42131804" (Hospital beds) → "42" (Medical equipment segment)
+
+### R058: Heavily Discounted Bid
+
+Flags contracting processes where the winning bid is much lower than the second-lowest valid bid.
+
+```ini
+[R058]
+threshold = 0.5
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `threshold` | float | 0.5 | Minimum percentage difference threshold (50% = 0.5) |
+
+**How it works:**
+
+Calculates the percentage difference between the winning bid and second-lowest valid bid. Flags as a high outlier (opposite of R024).
+
+<Note>
+  While R024 detects bids that are suspiciously **close**, R058 detects winning bids that are suspiciously **low** compared to competitors.
+</Note>
+
+---
+
+## Complete Example
+
+Here's a comprehensive settings file combining multiple configurations:
+
+```ini
+# Global settings
+currency = USD
+no_price_comparison_procurement_methods = Random Selection|Sorteo de Obras
+
+[output]
+info_currency_mismatches = true
+
+# ============================================
+# PREPARE COMMAND
+# ============================================
+
+[defaults]
+currency = USD
+item_classification_scheme = UNSPSC
+bid_status = valid
+award_status = active
+party_roles = true
+
+[redactions]
+amount = 0|99999999
+organization_id = placeholder|N/A
+
+[corrections]
+award_status_by_contract_status = true
+
+[modifications]
+move_auctions = true
+prefix_buyer_or_procuring_entity_id = MX-GOB-
+prefix_tenderer_or_supplier_id = MX-RFC-
+split_procurement_method_details = -
+
+[codelists.bid_status]
+Qualified = valid
+Disqualified = disqualified
+InTreatment = pending
+
+[codelists.award_status]
+Active = active
+Cancelled = cancelled
+
+# ============================================
+# INDICATORS COMMAND
+# ============================================
+
+[exclusions]
+procurement_method_details = Random Selection
+
+# Short submission period
+[R003]
+threshold = 15
+procurement_methods = open|selective|limited
+
+[R003.procurement_method_details]
+emergency = 10
+international = 25
+
+# Single bid received
+[R018]
+procurement_methods = open|selective
+
+# Price close to winning bid
+[R024]
+threshold = 0.05
+
+# Excessive unsuccessful bids
+[R025]
+percentile = 75
+threshold = 0.05
+
+# Identical bid prices
+[R028]
+
+# Late bid won
+[R030]
+
+# All except winning bid disqualified
+[R035]
+threshold = 3
+
+# Lowest bid disqualified
+[R036]
+
+# Excessive disqualified bids
+[R038]
+threshold = 0.5
+minimum_submitted_bids = 2
+minimum_contracting_processes = 2
+
+# Heterogeneous supplier
+[R048]
+digits = 2
+threshold = 10
+minimum_contracting_processes = 20
+
+# Heavily discounted bid
+[R058]
+threshold = 0.5
+```
+
+---
+
+## Best Practices
+
+<Steps>
+  <Step title="Start with defaults">
+    Use `ocdscardinal init settings.ini` to generate a documented template
+  </Step>
+  <Step title="Enable incrementally">
+    Start with a few key indicators, then expand as you understand your data
+  </Step>
+  <Step title="Document your changes">
+    Use comments to explain why you adjusted specific thresholds
+  </Step>
+  <Step title="Iterate based on results">
+    Review indicator output and adjust thresholds to reduce false positives
+  </Step>
+</Steps>
+
+<Warning>
+  **Don't over-configure**: Cardinal's defaults are based on extensive research. Only adjust settings when you have specific evidence they need changing for your dataset.
+</Warning>
+
+---
+
+## Troubleshooting
+
+<Accordion title="My indicators aren't producing any results">
+  **Possible causes:**
+  
+  1. **Indicators not enabled**: Ensure you have sections for the indicators you want to run
+  2. **Currency mismatch**: Check that `currency` matches your data
+  3. **Global exclusions too broad**: Your `exclusions` might be filtering out all data
+  4. **Data quality issues**: Run `prepare` first to ensure data meets requirements
+  
+  **Debug steps:**
+  
+  ```bash
+  # Run with verbose logging
+  ocdscardinal indicators -vv --settings settings.ini data.jsonl
+  ```
+</Accordion>
+
+<Accordion title="Too many false positives">
+  **Solutions:**
+  
+  1. **Adjust thresholds**: Increase thresholds for outlier-based indicators (R024, R025, R038, R048, R058)
+  2. **Add exclusions**: Filter out inappropriate procurement methods
+  3. **Review data quality**: Some "false positives" might indicate data quality issues
+  
+  **Example:**
+  
+  ```ini
+  # If R035 flags too many normal cases
+  [R035]
+  threshold = 3  # Require more disqualified bids before flagging
+  ```
+</Accordion>
+
+<Accordion title="Settings file syntax errors">
+  **Common mistakes:**
+  
+  - Missing `=` between property name and value
+  - Forgetting `[brackets]` around section names
+  - Using `:` instead of `=` (YAML syntax)
+  
+  **Correct format:**
+  
+  ```ini
+  [R003]
+  threshold = 15  # Correct: uses =
+  ```
+  
+  **Incorrect:**
+  
+  ```ini
+  R003:
+    threshold: 15  # Wrong: this is YAML, not INI
+  ```
+</Accordion>
+
+---
+
+## Reference Links
+
+- [Initialize settings file](/cli/init)
+- [Prepare command](/cli/prepare)
+- [Indicators command](/cli/indicators)
+- [Complete workflow guide](/concepts/workflow)

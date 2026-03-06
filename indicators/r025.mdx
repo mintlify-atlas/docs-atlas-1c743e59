@@ -1,0 +1,136 @@
+---
+title: "R025 - Excessive unsuccessful bids"
+description: "Detects tenderers who submit many bids but win unusually few contracts"
+---
+
+The ratio of winning bids to submitted bids for a top tenderer is a low outlier.
+
+## Methodology
+
+For each tenderer, the **ratio** is calculated as:
+
+```
+numberOfWinningBids / numberOfValidBids
+```
+
+Across all contracting processes.
+
+A tenderer is flagged if:
+
+1. Its number of valid bids is greater than or equal to the **upper fence** (default: 75th percentile / Q₃) of the set of numbers of valid bids (making it a "top tenderer"), AND
+2. Its ratio is less than or equal to the **lower fence** of `Q1 - 1.5(IQR)`, where Q₁ is the first quartile and IQR is the interquartile range for the set of ratios
+
+<Note>
+**Example**:
+
+75% (Q₃) of bidders in Atlantis submitted at most 100 bids. UnethicalBid Ltd. submitted 150 bids. This is greater than the upper fence of 100, so UnethicalBid Ltd. is a "top tenderer."
+
+25% (Q₁) of bidders in Atlantis won at most half (`0.5`) of their bids. 75% (Q₃) of bidders won at most three quarters (`0.75`) of their bids. This yields a lower fence of one eighth (`0.125`).
+
+UnethicalBid Ltd. won 15 of its 150 bids, or one tenth (`0.1`). This is less than the lower fence of one eighth, so UnethicalBid Ltd. is flagged.
+</Note>
+
+<Warning>
+**Why is this a red flag?**
+
+A colluding bidder can mimic competition by submitting deliberately losing bids (at inflated bid prices, for example) in contracting processes in which a colluding partner participates. This creates the appearance of a competitive market while actually participating in bid-rigging schemes.
+</Warning>
+
+<small>
+Based on "Superfluous losing bidders" in [*Toolkit for detecting collusive bidding in public procurement*](https://www.govtransparency.eu/wp-content/uploads/2015/11/GTI_WP2014_2_Toth_et_al_150413.pdf) and "Top losers" in [*A decision support system for fraud detection in public procurement*](https://www.researchgate.net/publication/341703812_A_decision_support_system_for_fraud_detection_in_public_procurement).
+</small>
+
+## Output
+
+The indicator's value is the **ratio** as a decimal (e.g., `0.1666` for winning 1 out of 6 bids).
+
+This indicator only flags **tenderers**, not individual contracting processes.
+
+## Configuration
+
+All configuration is optional.
+
+<ParamField path="percentile" type="integer" default="75">
+  The percentile to use for determining "top tenderers" (those who bid frequently). Only tenderers at or above this percentile in number of bids are evaluated.
+  
+  ```ini
+  [R025]
+  percentile = 75
+  ```
+</ParamField>
+
+<ParamField path="threshold" type="float">
+  Override the calculated lower fence with a fixed threshold. When set, the statistical calculation is bypassed.
+  
+  ```ini
+  [R025]
+  threshold = 0.05
+  ```
+  
+  This would flag top tenderers whose win ratio is ≤ 5%.
+</ParamField>
+
+<Note>
+**Configuration tip**: Put all properties under one `[R025]` section in your settings file.
+</Note>
+
+## Exclusions
+
+A contracting process is excluded if:
+
+- An award's status is pending or invalid
+- There are multiple active awards (multiple winners) - see [issue #14](https://github.com/open-contracting/cardinal-rs/issues/14)
+- A bid is submitted by multiple tenderers (joint ventures) - see [issue #17](https://github.com/open-contracting/cardinal-rs/issues/17)
+- An award is made to multiple suppliers - see [issue #17](https://github.com/open-contracting/cardinal-rs/issues/17)
+
+<Note>
+Want to eliminate an exclusion? Please contribute to the linked GitHub issues.
+</Note>
+
+## Example Output
+
+**Input** (Multiple OCDS releases showing a tenderer with low win rate):
+```json
+{"ocid": "ocds-1", "awards": [{"status": "active", "suppliers": [{"id": "A"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+{"ocid": "ocds-2", "awards": [{"status": "active", "suppliers": [{"id": "A"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+{"ocid": "ocds-3", "awards": [{"status": "active", "suppliers": [{"id": "A"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+{"ocid": "ocds-4", "awards": [{"status": "active", "suppliers": [{"id": "A"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+{"ocid": "ocds-5", "awards": [{"status": "active", "suppliers": [{"id": "A"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+{"ocid": "ocds-6", "awards": [{"status": "active", "suppliers": [{"id": "F"}]}], "bids": {"details": [{"tenderers": [{"id": "F"}], "status": "valid"}]}}
+```
+
+**Command**:
+```bash
+ocdscardinal indicators --settings settings.ini --no-meta data.jsonl
+```
+
+**Output**:
+```json
+{"Tenderer":{"F":{"R025":0.16666666666666666}}}
+```
+
+Tenderer "F" bid 6 times and won only once (16.67% win rate).
+
+## Implementation Details
+
+From `src/indicators/r025.rs:22-91`:
+
+The indicator:
+1. **During fold phase**: 
+   - Counts valid bids per tenderer
+   - Tracks whether each bid won (tenderer is in award suppliers)
+   - Stores as a fraction (wins/total) in `r025_tenderer`
+   - Each tenderer counted once per contracting process
+2. **During finalize phase**:
+   - Calculates upper fence for number of bids (default: Q₃)
+   - Calculates lower fence for win ratios using Tukey's method
+   - Flags tenderers who exceed upper fence AND fall below lower fence
+3. **Optimization**: Skips flagging if Q1 ≤ 0 (would flag majority of top tenderers)
+
+<Warning>
+This is a **cross-process indicator** that requires substantial data about multiple contracting processes to identify patterns. It won't work effectively on small datasets or individual processes.
+</Warning>
+
+<Note>
+**Interpretation**: A low win ratio alone isn't necessarily suspicious - many legitimate businesses lose more bids than they win. This indicator specifically targets *frequent bidders* with *unusually low* win rates compared to their peers, which may suggest cover bidding in collusion schemes.
+</Note>

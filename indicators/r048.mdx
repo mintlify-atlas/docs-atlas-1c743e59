@@ -1,0 +1,120 @@
+---
+title: "R048: Heterogeneous supplier"
+description: "Detects suppliers with unusually diverse product portfolios across awards"
+---
+
+The variety of items supplied by a tenderer is a high outlier.
+
+## Methodology
+
+This indicator requires awarded items to be classified using a hierarchy of numeric codes. For example, [UNSPSC](https://www.unspsc.org) and [CPV](https://simap.ted.europa.eu/cpv) have four primary levels.
+
+<CardGroup cols={2}>
+  <Card title="UNSPSC Classification">
+    | Digits | Level |
+    | ------ | ----- |
+    | **XX**000000 | Segment |
+    | **XXXX**0000 | Family |
+    | **XXXXXX**00 | Class |
+    | **XXXXXXXX** | Commodity |
+  </Card>
+  
+  <Card title="CPV Classification">
+    | Digits | Level |
+    | ------ | ----- |
+    | **XX**000000 | Division |
+    | **XXX**00000 | Group |
+    | **XXXX**0000 | Class |
+    | **XXXXX**000 | Category |
+  </Card>
+</CardGroup>
+
+For each tenderer, the **variety** is calculated as the number of distinct first-level classifications across all items awarded to the tenderer, across all contracting processes. 
+
+A tenderer is flagged if its variety is greater than or equal to the **upper fence** of:
+
+$$
+Q_3 + 1.5(IQR)
+$$
+
+where $Q_3$ is the third quartile and $IQR$ is the interquartile range for the set of varieties among tenderers awarded in at least 20 contracting processes.
+
+<Tip>
+**Example**
+
+25% ($Q_1$) of bidders in Atlantis supply items in 1 product category. 75% ($Q_3$) of bidders supply items in at most 4 product categories. This yields an upper fence of 8.5 (9 in effect).
+
+RentSeekers Inc. supplies items in 20 product categories. This is higher than the upper fence of 8.5. Therefore, RentSeekers Inc. is flagged.
+</Tip>
+
+<Info>
+**Why is this a red flag?**
+
+A heterogeneous supplier is more likely to be unsuitable, increasing the risk of low value for money, low quality of delivery, and/or rent extraction.
+</Info>
+
+<sub>Based on "Component C1B" in [*Design and measurement of a corruption risk index from a supplier perspective in the context of COVID-19 emergency*](https://www.estudiosanticorrupcion.org/wp-content/uploads/2021/02/IA-OCP-Working-PaperV3.pdf).</sub>
+
+## Output
+
+The indicator's value is the **variety**, as a decimal (the count of distinct classification codes).
+
+## Configuration
+
+All configuration is optional.
+
+<ParamField path="R048.threshold" type="integer">
+  Override the calculated upper fence with a fixed threshold for the number of distinct product categories.
+</ParamField>
+
+<ParamField path="R048.digits" type="integer" default={2}>
+  Number of digits to use from the classification code for grouping. Use 2 for first-level classification (e.g., XX000000). Increase if the first level is too broad.
+</ParamField>
+
+<ParamField path="R048.minimum_contracting_processes" type="integer" default={20}>
+  Minimum number of contracting processes a tenderer must be awarded in to be included when calculating the upper fence. This minimizes correlation between award count and variety.
+</ParamField>
+
+```ini
+[R048]
+threshold = 10  # optional: override calculated upper fence
+digits = 2  # default: use first-level classification
+minimum_contracting_processes = 20  # default
+```
+
+## Implementation Details
+
+The indicator (from `src/indicators/r048.rs`):
+
+- Collects classification codes from awarded items for each supplier
+- Takes only the first N digits of each classification code (configurable)
+- Counts distinct classification codes per supplier
+- Tracks the number of contracting processes each supplier participates in
+- Uses statistical outlier detection (quartiles and IQR) to identify heterogeneous suppliers
+- Only includes suppliers meeting the minimum contracting process threshold in the calculation
+
+<Warning>
+The indicator only processes awards with exactly one supplier. Awards to multiple suppliers are excluded to avoid overcounting.
+</Warning>
+
+## Exclusions
+
+An active award is excluded if it is made to multiple suppliers.
+
+## Demonstration
+
+**Input**
+
+```json
+// Example OCDS releases showing supplier winning awards across many diverse product categories
+```
+
+**Output**
+
+```bash
+ocdscardinal indicators --settings docs/examples/R/048.ini --no-meta docs/examples/R/048.jsonl
+```
+
+```json
+{"Tenderer":{"F":{"R048":2.0}}}
+```

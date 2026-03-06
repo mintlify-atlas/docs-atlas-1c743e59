@@ -1,0 +1,111 @@
+---
+title: "coverage()"
+description: "Count field coverage in OCDS data"
+---
+
+## Function Signature
+
+```python
+def coverage(file: str) -> dict:
+    """
+    Count the number of times each field is non-empty in a line-delimited JSON file
+    
+    Args:
+        file: The path to the file, in which each line is JSON text
+    
+    Returns:
+        A dictionary mapping paths to counts
+    
+    Raises:
+        PyRuntimeError: If the file cannot be opened or read
+    """
+```
+
+## Parameters
+
+<ParamField path="file" type="str" required>
+  The path to the line-delimited JSON file to analyze. Each line should contain a complete JSON object representing an OCDS release.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="dict" type="dict[str, int]">
+  A dictionary mapping JSON paths to occurrence counts. Keys are paths through the JSON structure, and values are the number of times that path contained non-empty data.
+</ResponseField>
+
+## Path Format
+
+The returned dictionary uses a specific path notation:
+
+- The empty string `""` corresponds to a line (the root object)
+- Paths ending with `/` correspond to JSON objects
+- Paths ending with `[]` correspond to array elements
+- Other paths correspond to object members
+
+## Empty Values
+
+The function considers the following as "empty" and does not count them:
+
+- Empty strings: `""`
+- Empty arrays: `[]`
+- Empty objects: `{}`
+- Null values: `null`
+- Any nodes containing only empty nodes
+
+The command walks the JSON tree, counting only non-empty nodes.
+
+## Usage Example
+
+```python
+from ocdscardinal import coverage
+
+# Analyze field coverage in an OCDS file
+result = coverage("releases.jsonl")
+
+# Print the coverage statistics
+for path, count in result.items():
+    print(f"{path}: {count}")
+```
+
+## Example Output
+
+Given a file with OCDS releases, the output might look like:
+
+```python
+{
+    "": 100,                           # 100 lines (releases)
+    "ocid": 100,                       # All releases have an OCID
+    "tender/": 100,                    # All releases have a tender object
+    "tender/id": 100,                  # All tenders have an ID
+    "tender/title": 95,                # 95 tenders have a title
+    "awards[]": 80,                    # 80 releases have awards
+    "awards[]/id": 80,                 # All awards have an ID
+    "awards[]/value/": 80,             # All awards have a value object
+    "awards[]/value/amount": 78,       # 78 awards have an amount
+    "contracts[]": 60,                 # 60 releases have contracts
+    # ... more paths
+}
+```
+
+## Error Handling
+
+The function raises a `PyRuntimeError` if:
+
+- The file cannot be opened (e.g., file not found, permission denied)
+- An I/O error occurs while reading the file
+
+```python
+from ocdscardinal import coverage
+
+try:
+    result = coverage("data.jsonl")
+except RuntimeError as e:
+    print(f"Error analyzing coverage: {e}")
+```
+
+## Use Cases
+
+- **Data quality assessment**: Identify which fields are consistently populated in your OCDS data
+- **Schema validation**: Check coverage of required and recommended fields
+- **Data completeness reports**: Generate statistics on field usage across a dataset
+- **Publication planning**: Understand which fields publishers are using most frequently

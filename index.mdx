@@ -1,97 +1,152 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Cardinal
+description: Measure red flags and procurement indicators using OCDS data
 ---
 
-## Setting up
+<div style={{
+  background: 'linear-gradient(135deg, #5d6c75 0%, #b5bec1 100%)',
+  padding: '80px 40px',
+  borderRadius: '6px',
+  marginBottom: '40px',
+  color: '#ffffff'
+}}>
+  <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
+    <h1 style={{ 
+      fontSize: '48px', 
+      fontWeight: '700', 
+      marginBottom: '20px',
+      color: '#ffffff'
+    }}>
+      Cardinal
+    </h1>
+    <p style={{ 
+      fontSize: '24px', 
+      marginBottom: '40px',
+      color: '#ffffff',
+      opacity: 0.95
+    }}>
+      Measure red flags and procurement indicators using OCDS data
+    </p>
+    <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+      <a 
+        href="/quickstart" 
+        style={{
+          background: '#4caf50',
+          color: '#ffffff',
+          padding: '14px 32px',
+          borderRadius: '4px',
+          textDecoration: 'none',
+          fontWeight: '600',
+          fontSize: '16px',
+          display: 'inline-block'
+        }}
+      >
+        Get Started
+      </a>
+      <a 
+        href="https://github.com/open-contracting/cardinal-rs" 
+        style={{
+          background: 'transparent',
+          color: '#ffffff',
+          padding: '14px 32px',
+          borderRadius: '4px',
+          textDecoration: 'none',
+          fontWeight: '600',
+          fontSize: '16px',
+          display: 'inline-block',
+          border: '2px solid #ffffff'
+        }}
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## What is Cardinal?
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Cardinal is a powerful command-line tool and library for analyzing procurement data using the [Open Contracting Data Standard (OCDS)](https://standard.open-contracting.org/). It calculates procurement indicators and detects red flags that may indicate corruption, collusion, or other irregularities in public procurement processes.
 
-## Make it yours
+Built in Rust for high performance, Cardinal can process large datasets efficiently and provides both a CLI interface and library bindings for Rust and Python.
 
-Design a docs site that looks great and empowers your users.
+## Key Features
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="11 Red Flag Indicators" icon="flag" href="/indicators/overview">
+    Calculate procurement red flags including bid manipulation, suspicious pricing, and irregular procedures
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Data Preparation" icon="wrench" href="/commands/prepare">
+    Correct quality issues in OCDS data with configurable defaults and transformations
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="High Performance" icon="gauge-high" href="/installation">
+    Process line-delimited JSON files efficiently with parallel processing
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Flexible Configuration" icon="sliders" href="/concepts/settings">
+    Customize thresholds, exclusions, and behavior for your specific use case
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Quick Example
 
-Everything you need to create world-class documentation.
+Analyze procurement data in three simple steps:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Steps>
+  <Step title="Initialize settings">
+    Create a configuration file with default settings for all indicators:
+    
+    ```bash
+    ocdscardinal init settings.ini
+    ```
+  </Step>
+  
+  <Step title="Prepare your data">
+    Correct quality issues and standardize your OCDS data:
+    
+    ```bash
+    ocdscardinal prepare data.jsonl --settings settings.ini --output prepared.jsonl --errors errors.csv
+    ```
+  </Step>
+  
+  <Step title="Calculate indicators">
+    Run red flag analysis on your prepared data:
+    
+    ```bash
+    ocdscardinal indicators --settings settings.ini prepared.jsonl > results.json
+    ```
+  </Step>
+</Steps>
 
-## Need inspiration?
+## Use Cases
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
+Cardinal is designed for:
+
+- **Anti-corruption agencies** investigating procurement fraud
+- **Civil society organizations** monitoring public spending
+- **Government oversight bodies** auditing contracting processes
+- **Researchers** analyzing procurement patterns and behaviors
+- **Procurement professionals** improving process quality
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Cardinal using Cargo, npm, or pip
+  </Card>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get up and running in minutes
+  </Card>
+  <Card title="Commands Reference" icon="terminal" href="/commands/init">
+    Explore all CLI commands and options
+  </Card>
+  <Card title="API Documentation" icon="code" href="/api/rust/overview">
+    Use Cardinal as a Rust or Python library
+  </Card>
+</CardGroup>
+
+## Open Source
+
+Cardinal is open source software released under the MIT license. It's developed by the [Open Contracting Partnership](https://www.open-contracting.org/) and community contributors.
+
+<Card title="Contribute on GitHub" icon="github" href="https://github.com/open-contracting/cardinal-rs">
+  View source code, report issues, and contribute to Cardinal
 </Card>

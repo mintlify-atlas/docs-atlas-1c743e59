@@ -1,0 +1,51 @@
+---
+title: "Overview"
+description: "Installing and using Cardinal as a Python library"
+---
+
+## Installation
+
+Install the `ocdscardinal` Python package from PyPI:
+
+```bash
+pip install ocdscardinal
+```
+
+The package requires Python 3.10 or higher.
+
+## Package Information
+
+- **Package name**: `ocdscardinal`
+- **Latest version**: 0.0.8
+- **License**: MIT
+- **Homepage**: [https://github.com/open-contracting/cardinal-rs](https://github.com/open-contracting/cardinal-rs)
+
+## Basic Usage
+
+Import the `coverage` function from the package:
+
+```python
+from ocdscardinal import coverage
+```
+
+The Python library provides access to Cardinal's core functionality through Python bindings built with PyO3. The library operates on line-delimited JSON files containing OCDS data.
+
+## What's Available
+
+Currently, the Python library exposes the following functionality:
+
+- **`coverage()`**: Count the number of times each field is non-empty in a line-delimited JSON file
+
+For more details on the `coverage()` function, see the [coverage](/api/python/coverage) page.
+
+## Performance
+
+The Python bindings provide access to Cardinal's Rust-based implementation, offering high performance for processing large OCDS datasets. The library uses parallel processing internally to efficiently analyze JSON data.
+
+## Development
+
+The Python package is built using Maturin, which compiles the Rust source code into a Python extension module. The package is compatible with:
+
+- Python 3.10+
+- CPython implementation
+- Linux, macOS, and Windows

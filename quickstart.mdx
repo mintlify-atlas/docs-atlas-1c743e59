@@ -1,80 +1,494 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get started with Cardinal in minutes by analyzing sample procurement data"
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide walks you through a complete Cardinal workflow using a real example. You'll initialize settings, prepare OCDS data, and calculate procurement indicators.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  **Before you begin**: Make sure you have [Cardinal installed](/installation) on your system.
 </Note>
+
+## Prerequisites
+
+- Cardinal installed via Cargo or pip
+- OCDS data in line-delimited JSON format (compiled releases)
+- Basic familiarity with the command line
+
+<Info>
+  Don't have OCDS data yet? Download sample data from the [OCP Data Registry](https://data.open-contracting.org) or use the examples in this guide.
+</Info>
+
+## Complete Workflow
+
+Cardinal's workflow consists of three main steps: initialize settings, prepare data, and calculate indicators.
+
+### Step 1: Initialize Settings
+
+Create a default configuration file that enables all indicators and documents all available options:
+
+```bash
+ocdscardinal init settings.ini
+```
+
+<Accordion title="Output">
+```
+Settings written to settings.ini.
+```
+</Accordion>
+
+This generates a `settings.ini` file with default values and extensive comments explaining each option.
+
+<Accordion title="View the settings file contents">
+  You can preview settings without creating a file by using `-` as the filename:
+  
+  ```bash
+  ocdscardinal init -
+  ```
+  
+  This outputs the settings to your terminal:
+  
+  ```ini
+  ; currency = USD
+  ; no_price_comparison_procurement_methods = Random Selection
+  ; price_comparison_procurement_methods = Reverse Auction
+  
+  [output]
+  ; info_currency_mismatches = true
+  
+  ; `prepare` command
+  ;
+  ; Read the documentation at:
+  ; https://cardinal.readthedocs.io/en/latest/cli/prepare.html
+  
+  [defaults]
+  ; currency = USD
+  ; item_classification_scheme = UNSPSC
+  ; bid_status = valid
+  ; award_status = active
+  ; party_roles = true
+  
+  [redactions]
+  ; amount = 0
+  ; organization_id = placeholder
+  
+  ; ... (additional configuration sections)
+  
+  [R003]
+  ; threshold = 15
+  ; procurement_methods = open|selective|limited
+  
+  [R018]
+  ; procurement_methods = open|selective
+  
+  [R024]
+  ; threshold = 0.05
+  
+  ; ... (more indicator configurations)
+  ```
+</Accordion>
+
+### Step 2: Prepare Your Data
+
+The `prepare` command corrects quality issues in your OCDS data and reports problems that could affect indicator calculations.
+
+<Steps>
+  <Step title="Run the prepare command">
+    Process your input data, writing corrected data to one file and quality issues to another:
+    
+    ```bash
+    ocdscardinal prepare input.jsonl \
+      --settings settings.ini \
+      --output prepared.jsonl \
+      --errors issues.csv
+    ```
+    
+    Replace `input.jsonl` with your OCDS data file.
+    
+    <Accordion title="Command breakdown">
+      - `input.jsonl`: Your OCDS compiled releases (one JSON object per line)
+      - `--settings settings.ini`: Configuration file from step 1
+      - `--output prepared.jsonl`: Where to write corrected data
+      - `--errors issues.csv`: Where to write quality issue reports
+    </Accordion>
+  </Step>
+  
+  <Step title="Review quality issues">
+    Open `issues.csv` to see reported quality issues. The CSV has these columns:
+    
+    | Column | Description |
+    |--------|-------------|
+    | **line** | Line number in the input file |
+    | **ocid** | OCID of the contracting process |
+    | **path** | JSON path to the problematic field |
+    | **array indexes** | Index position if the field is in an array |
+    | **incorrect value** | The problematic value (blank if not set) |
+    | **error description** | Type of issue: `not set`, `invalid`, or `is zero` |
+    
+    Example issue:
+    
+    ```csv
+    line,ocid,path,array indexes,incorrect value,error description
+    1,ocds-213czf-1,/bids/details[]/status,0,,not set
+    ```
+    
+    This indicates that bid #0 in contracting process `ocds-213czf-1` is missing a status field.
+  </Step>
+  
+  <Step title="Configure data corrections">
+    Edit `settings.ini` to fix quality issues automatically. For example, if bids are missing status values, add:
+    
+    ```ini
+    [defaults]
+    bid_status = valid
+    ```
+    
+    Common configurations:
+    
+    <AccordionGroup>
+      <Accordion title="Fill in missing currency">
+        ```ini
+        [defaults]
+        currency = USD
+        ```
+      </Accordion>
+      
+      <Accordion title="Set default classification scheme">
+        ```ini
+        [defaults]
+        item_classification_scheme = UNSPSC
+        ```
+      </Accordion>
+      
+      <Accordion title="Redact placeholder amounts">
+        ```ini
+        [redactions]
+        amount = 0|99999999
+        ```
+      </Accordion>
+      
+      <Accordion title="Prefix organization IDs">
+        ```ini
+        [modifications]
+        prefix_tenderer_or_supplier_id = DO-RPE-
+        ```
+      </Accordion>
+      
+      <Accordion title="Re-map invalid bid statuses">
+        ```ini
+        [codelists.bid_status]
+        Qualified = valid
+        Disqualified = disqualified
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+  
+  <Step title="Re-run and iterate">
+    Run the prepare command again with your updated settings:
+    
+    ```bash
+    ocdscardinal prepare input.jsonl \
+      --settings settings.ini \
+      --output prepared.jsonl \
+      --errors issues.csv
+    ```
+    
+    Review `issues.csv` again. Repeat this process until you're satisfied with the data quality.
+  </Step>
+</Steps>
+
+<Tip>
+  Most quality issues are repetitive and can be fixed with a single configuration change. For example, if 1,000 bids are missing statuses, adding `bid_status = valid` fixes all of them at once.
+</Tip>
+
+### Step 3: Calculate Indicators
+
+Run red flag analysis on your prepared data:
+
+```bash
+ocdscardinal indicators --settings settings.ini prepared.jsonl > results.json
+```
+
+<Accordion title="Command options">
+  Additional flags you can use:
+  
+  ```bash
+  ocdscardinal indicators \
+    --settings settings.ini \
+    --count \
+    --map \
+    prepared.jsonl > results.json
+  ```
+  
+  - `--count`: Print the number of results per group to stderr
+  - `--map`: Include mappings from contracting processes to organizations
+  - `--no-meta`: Exclude statistical metadata from results
+</Accordion>
+
+### Step 4: Analyze Results
+
+Open `results.json` to view your indicator results.
+
+<Accordion title="Example output structure">
+```json
+{
+  "OCID": {
+    "ocds-213czf-1": {
+      "R036": 1.0,
+      "R028": 1.0
+    },
+    "ocds-213czf-2": {
+      "R018": 1.0,
+      "R030": 1.0
+    }
+  },
+  "Buyer": {
+    "DO-UC-55216": {
+      "R038": 0.85
+    }
+  },
+  "Tenderer": {
+    "DO-RPE-1422": {
+      "R025": 0.12,
+      "R048": 2.5
+    }
+  },
+  "Meta": {
+    "R024": {
+      "q1": 66.67,
+      "q3": 100.0,
+      "lower_fence": 16.67
+    },
+    "R025": {
+      "q1": 0.5,
+      "q3": 1.0,
+      "lower_fence": 0.0
+    }
+  }
+}
+```
+</Accordion>
+
+#### Understanding the Output
+
+Results are organized by **group** (OCID, Buyer, ProcuringEntity, Tenderer) and **identifier**:
+
+<AccordionGroup>
+  <Accordion title="OCID group">
+    Results for individual contracting processes, keyed by `/ocid`.
+    
+    Example: `"ocds-213czf-1"` triggered indicators R036 and R028.
+    
+    - **R036**: Lowest bid disqualified (value: 1.0 = true)
+    - **R028**: Identical bid prices (value: 1.0 = true)
+  </Accordion>
+  
+  <Accordion title="Buyer group">
+    Results aggregated by buyer organizations, keyed by `/buyer/id`.
+    
+    Example: Buyer `"DO-UC-55216"` has a high rate of disqualified bids (R038: 0.85).
+  </Accordion>
+  
+  <Accordion title="ProcuringEntity group">
+    Results aggregated by procuring entities, keyed by `/tender/procuringEntity/id`.
+  </Accordion>
+  
+  <Accordion title="Tenderer group">
+    Results aggregated by tenderers (bidders), keyed by `/bids/details[]/tenderers[]/id`.
+    
+    Example: Tenderer `"DO-RPE-1422"` has:
+    - **R025**: Low win rate (0.12 = winning bid rate is a low outlier)
+    - **R048**: High variety of items supplied (2.5 = heterogeneous supplier)
+  </Accordion>
+  
+  <Accordion title="Meta section">
+    Statistical information about quartiles and fences used for outlier detection:
+    
+    ```json
+    "R024": {
+      "q1": 66.67,      // First quartile
+      "q3": 100.0,      // Third quartile
+      "lower_fence": 16.67  // Outlier threshold
+    }
+    ```
+    
+    These values help you understand how indicators determined outliers.
+  </Accordion>
+</AccordionGroup>
+
+#### Indicator Codes
+
+Each code represents a specific red flag:
+
+| Code | Red Flag | Description |
+|------|----------|-------------|
+| **R003** | Short submission period | Submission period is too short |
+| **R018** | Single bid received | Only one tenderer submitted a bid |
+| **R024** | Price close to winning bid | Second-lowest bid is suspiciously close to winner |
+| **R025** | Excessive unsuccessful bids | Tenderer has low win rate (outlier) |
+| **R028** | Identical bid prices | Multiple tenderers submitted same price |
+| **R030** | Late bid won | Winning bid received after deadline |
+| **R035** | All except winner disqualified | Only winner's bids were valid |
+| **R036** | Lowest bid disqualified | Lowest bid rejected despite price-only criterion |
+| **R038** | Excessive disqualified bids | High disqualification rate (outlier) |
+| **R048** | Heterogeneous supplier | Tenderer supplies unusually diverse items |
+| **R058** | Heavily discounted bid | Winner's price is much lower than competitors |
+
+<Info>
+  Learn more about each indicator in the [Indicators documentation](/indicators/overview).
+</Info>
+
+## Real-World Example
+
+Let's walk through a concrete example using sample data.
+
+### Sample Data
+
+Create a file called `example.jsonl` with this OCDS compiled release:
+
+```json
+{"ocid":"ocds-213czf-1","buyer":{"id":"DO-UC-001","name":"Ministry of Education"},"tender":{"id":"T-001","title":"Office Supplies","status":"complete","procuringEntity":{"id":"DO-UC-001"},"procurementMethod":"open","tenderPeriod":{"startDate":"2023-01-01T00:00:00Z","endDate":"2023-01-08T00:00:00Z"},"value":{"amount":100000,"currency":"USD"}},"bids":{"details":[{"id":"BID-001","status":"valid","tenderers":[{"id":"SUP-001","name":"Supplier A"}],"value":{"amount":95000,"currency":"USD"}},{"id":"BID-002","status":"disqualified","tenderers":[{"id":"SUP-002","name":"Supplier B"}],"value":{"amount":92000,"currency":"USD"}},{"id":"BID-003","status":"valid","tenderers":[{"id":"SUP-003","name":"Supplier C"}],"value":{"amount":98000,"currency":"USD"}}]},"awards":[{"id":"AWD-001","status":"active","suppliers":[{"id":"SUP-001","name":"Supplier A"}],"value":{"amount":95000,"currency":"USD"}}]}
+```
+
+This represents a procurement where the lowest bid (SUP-002 at $92,000) was disqualified, and the second-lowest bid (SUP-001 at $95,000) won.
+
+### Run the Analysis
+
+<Steps>
+  <Step title="Initialize settings">
+    ```bash
+    ocdscardinal init settings.ini
+    ```
+  </Step>
+  
+  <Step title="Prepare data">
+    ```bash
+    ocdscardinal prepare example.jsonl \
+      --settings settings.ini \
+      --output prepared.jsonl \
+      --errors issues.csv
+    ```
+  </Step>
+  
+  <Step title="Calculate indicators">
+    ```bash
+    ocdscardinal indicators --settings settings.ini \
+      prepared.jsonl > results.json
+    ```
+  </Step>
+  
+  <Step title="View results">
+    ```bash
+    cat results.json | jq .
+    ```
+    
+    You should see results indicating that **R036** (Lowest bid disqualified) was triggered for this contracting process.
+  </Step>
+</Steps>
+
+## Common Workflows
+
+<AccordionGroup>
+  <Accordion title="Testing specific indicators">
+    To test a single indicator, disable all others in your settings file by commenting out their sections:
+    
+    ```ini
+    ; [R003]
+    ; [R018]
+    [R036]  ; Only R036 is enabled
+    ; [R038]
+    ```
+  </Accordion>
+  
+  <Accordion title="Excluding specific procurement methods">
+    Some procedures shouldn't be analyzed (e.g., emergency procurements). Exclude them:
+    
+    ```ini
+    [exclusions]
+    procurement_method_details = Emergency|Direct Award|Random Selection
+    ```
+  </Accordion>
+  
+  <Accordion title="Adjusting thresholds">
+    If you're getting too many false positives, increase indicator thresholds:
+    
+    ```ini
+    [R003]
+    threshold = 20  ; Increase from default 15 days
+    
+    [R024]
+    threshold = 0.10  ; Increase from default 0.05 (5%)
+    ```
+  </Accordion>
+  
+  <Accordion title="Working with large datasets">
+    Cardinal handles large files efficiently, but you can monitor progress:
+    
+    ```bash
+    # Increase verbosity to see progress
+    ocdscardinal indicators -vv --settings settings.ini \
+      large_dataset.jsonl > results.json
+    ```
+    
+    Use `-v` for warnings, `-vv` for info, `-vvv` for debug output.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No indicators are triggered">
+    Possible causes:
+    
+    1. **Settings file missing indicator sections**: Check that indicators are enabled in `settings.ini`
+    2. **Data quality issues**: Review `issues.csv` - missing required fields prevent calculations
+    3. **All data excluded**: Check your `[exclusions]` configuration
+    4. **Currency mismatches**: Cardinal excludes processes with non-primary currencies
+    
+    Run with increased verbosity to see more details:
+    ```bash
+    ocdscardinal indicators -vv --settings settings.ini prepared.jsonl
+    ```
+  </Accordion>
+  
+  <Accordion title="Too many false positives">
+    1. **Adjust thresholds** in your settings file for specific indicators
+    2. **Add exclusions** for procurement methods that shouldn't be analyzed
+    3. **Configure price comparison methods** to exclude inappropriate procedures:
+       ```ini
+       no_price_comparison_procurement_methods = Framework Agreement|Reverse Auction
+       ```
+  </Accordion>
+  
+  <Accordion title="Prepare command reports many issues">
+    This is normal! Most issues are repetitive:
+    
+    1. **Sort the CSV** by the `path` column to group similar issues
+    2. **Add configuration** to fix entire categories at once
+    3. **Focus on** `not set` errors first - these prevent indicator calculations
+    4. **Iterate** - run prepare → review → configure → repeat
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prepare Command" icon="wrench" href="/commands/prepare">
+    Deep dive into data preparation and quality corrections
+  </Card>
+  
+  <Card title="Indicators Command" icon="calculator" href="/commands/indicators">
+    Learn about all indicator calculation options
+  </Card>
+  
+  <Card title="Settings Configuration" icon="sliders" href="/concepts/settings">
+    Master Cardinal's configuration system
+  </Card>
+  
+  <Card title="Red Flags Reference" icon="flag" href="/indicators/overview">
+    Understand each indicator's methodology
+  </Card>
+</CardGroup>

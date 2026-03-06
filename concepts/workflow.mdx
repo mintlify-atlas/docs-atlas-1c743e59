@@ -1,0 +1,336 @@
+---
+title: End-to-End Workflow
+description: Complete workflow from raw data collection to analyzing procurement indicators
+---
+
+This guide walks you through the complete workflow for using Cardinal to analyze OCDS procurement data, from initial data collection to final results.
+
+## Overview
+
+Cardinal's workflow consists of five main stages:
+
+<Steps>
+  <Step title="Collect data">
+    Gather OCDS-formatted procurement data from publishers
+  </Step>
+  <Step title="Prepare data">
+    Ensure data is in the correct format and quality
+  </Step>
+  <Step title="Explore data">
+    Understand your dataset to inform indicator configuration
+  </Step>
+  <Step title="Calculate indicators">
+    Run Cardinal to compute red flags and procurement indicators
+  </Step>
+  <Step title="Analyze results">
+    Review and interpret the indicator results
+  </Step>
+</Steps>
+
+---
+
+## 1. Collect Data
+
+Collect the procurement data you want to analyze in OCDS format.
+
+### Using the OCP Data Registry
+
+The easiest way to get started is with the [OCP Data Registry](https://data.open-contracting.org), which provides:
+
+- Data from **over 50 publishers** worldwide
+- OCDS compiled releases in **line-delimited JSON** format
+- Ready-to-use data that Cardinal can process immediately
+
+<Note>
+  The Data Registry provides data in the exact format Cardinal expects: OCDS compiled releases in line-delimited JSON files (`.jsonl`).
+</Note>
+
+### Other Data Sources
+
+If the data you need isn't in OCDS format, contact the [OCP Data Support Team](mailto:data@open-contracting.org) for assistance in converting your data.
+
+---
+
+## 2. Prepare Data
+
+Before calculating indicators, ensure your data meets Cardinal's requirements for format and quality.
+
+### Format Requirements
+
+<Warning>
+  Skip this section if you're using data from the OCP Data Registry—it's already in the correct format.
+</Warning>
+
+Your data must meet these requirements:
+
+1. **Compiled releases**: Individual releases or records must be merged into compiled releases
+2. **OCDS version**: Data must be upgraded to OCDS 1.1 (the standard version since 2017)
+3. **File format**: Line-delimited JSON (one compiled release per line)
+
+#### Converting Your Data
+
+Use [OCDS Kit](https://ocdskit.readthedocs.io/en/latest/) to prepare your data:
+
+```bash
+# Compile individual releases into compiled releases
+ocdskit compile input-releases.jsonl > compiled.jsonl
+
+# Upgrade to OCDS 1.1
+ocdskit upgrade 1.0:1.1 compiled.jsonl > upgraded.jsonl
+```
+
+### Quality Assurance
+
+For reliable indicator results, your input data must be high quality. Cardinal provides the `prepare` command to identify and correct quality issues automatically.
+
+<Accordion title="Common quality issues Cardinal can fix">
+  - **Missing field values**: e.g., bid status, currency, award status
+  - **Invalid codes**: e.g., non-standard status codes that need remapping
+  - **Structural errors**: e.g., objects where arrays are expected
+  - **Inconsistent IDs**: e.g., mixing strings and integers
+  - **Placeholder values**: e.g., amount fields set to 0 or 99999999
+</Accordion>
+
+**Example workflow:**
+
+```bash
+# Initialize a settings file with defaults
+ocdscardinal init settings.ini
+
+# Run prepare to identify and fix issues
+ocdscardinal prepare \
+  --settings settings.ini \
+  --output prepared.jsonl \
+  --errors issues.csv \
+  input.jsonl
+
+# Review issues.csv and adjust settings.ini as needed
+# Re-run prepare until satisfied with results
+```
+
+The `prepare` command writes:
+- **Corrected data** to `prepared.jsonl`
+- **Quality issues** to `issues.csv` for review
+
+See the [prepare command documentation](/cli/prepare) for complete details on configuration options.
+
+---
+
+## 3. Explore Data
+
+Before selecting and configuring indicators, explore your dataset to understand its characteristics.
+
+<Note>
+  This step helps you make informed decisions about which indicators to enable and how to configure them.
+</Note>
+
+### Using JSON Processors
+
+Use JSON processors like [jaq](https://github.com/01mf02/jaq) (faster) or [jq](https://stedolan.github.io/jq/) (more common) to analyze your data.
+
+### Example: Counting Procurement Methods
+
+If the publisher uses `/tender/procurementMethodDetails` for the procurement method name:
+
+```bash
+jaq 'reduce (inputs | .tender.procurementMethodDetails) as $s ({}; .[$s] += 1)' prepared.jsonl
+```
+
+**Output:**
+```json
+{
+  "Compras por Debajo del Umbral": 58958,
+  "Comparacion de Precios": 4837,
+  "Compras Menores": 29175,
+  "Procesos de Excepcion": 4629,
+  "Licitacion Publica Nacional": 1258,
+  "Sorteo de Obras": 29,
+  "Licitacion Publica Internacional": 29,
+  "Subasta Inversa": 40,
+  "Licitacion Restringida": 5
+}
+```
+
+<Accordion title="Why is this useful?">
+  Understanding procurement method distribution helps you:
+  - Decide which methods to exclude from analysis (e.g., random selections)
+  - Configure procurement method filters for specific indicators
+  - Identify data quality issues (e.g., unexpected values)
+</Accordion>
+
+### Example: Analyzing Product Classifications
+
+If your data uses classification systems like UNSPSC or CPV, count occurrences by segment:
+
+```bash
+jaq 'reduce (inputs | .awards[]?.items[]?.classification.id | values | tostring | .[:2]) as $s ({}; .[$s] += 1)' prepared.jsonl
+```
+
+**Output:**
+```json
+{
+  "42": 26933,  // Medical equipment
+  "43": 12549,  // IT and telecom
+  "81": 2805,   // Engineering services
+  // ...
+}
+```
+
+This helps you understand:
+- Which product/service categories are most common
+- Whether certain suppliers are specialized or diversified
+- How to interpret the R048 indicator (heterogeneous supplier)
+
+---
+
+## 4. Calculate Indicators
+
+Run Cardinal's `indicators` command to calculate procurement red flags and indicators.
+
+### Basic Usage
+
+```bash
+ocdscardinal indicators --settings settings.ini prepared.jsonl > results.json
+```
+
+### Workflow
+
+<Steps>
+  <Step title="Select indicators">
+    Enable or disable indicators in `settings.ini` based on your analysis goals
+  </Step>
+  <Step title="Run the command">
+    Execute Cardinal with your prepared data
+  </Step>
+  <Step title="Review results">
+    Examine the output to identify red flags
+  </Step>
+  <Step title="Adjust configuration">
+    Fine-tune indicator thresholds to reduce false positives
+  </Step>
+</Steps>
+
+### Example Settings
+
+```ini
+# Global exclusions (optional)
+[exclusions]
+procurement_method_details = Random Selection|Sorteo de Obras
+
+# Enable specific indicators
+[R018]  # Single bid received
+procurement_methods = open|selective
+
+[R035]  # All except winning bid disqualified  
+threshold = 1
+
+[R038]  # Excessive disqualified bids
+threshold = 0.5
+minimum_submitted_bids = 2
+```
+
+### Output Format
+
+Cardinal produces JSON output organized by group (OCID, Buyer, ProcuringEntity, Tenderer):
+
+```json
+{
+  "OCID": {
+    "ocds-213czf-1": {
+      "R018": 1.0,
+      "R036": 1.0
+    }
+  },
+  "Tenderer": {
+    "SUPPLIER-123": {
+      "R038": 0.75,
+      "R048": 15.0
+    }
+  },
+  "Meta": {
+    "R038": {
+      "q1": 0.0,
+      "q3": 0.25,
+      "upper_fence": 0.5
+    }
+  }
+}
+```
+
+<Note>
+  The `Meta` section provides statistical context (quartiles and fences) used to calculate outlier-based indicators.
+</Note>
+
+See the [indicators command documentation](/cli/indicators) for detailed information on all available indicators.
+
+---
+
+## 5. Analyze Results
+
+<Warning>
+  Advanced analytics tools are under development. Contact the [OCP Data Support Team](mailto:data@open-contracting.org) if you're interested in business intelligence tools for Cardinal results.
+</Warning>
+
+### Understanding the Results
+
+Each indicator returns a numeric value indicating the severity or presence of a red flag:
+
+- **Binary indicators** (0 or 1): Flag is either raised or not
+  - Example: R018 (Single bid received) = 1.0 means only one bid was submitted
+  
+- **Ratio indicators** (0.0 to 1.0): Proportion or percentage
+  - Example: R038 = 0.75 means 75% of bids were disqualified
+
+- **Count indicators**: Number of occurrences
+  - Example: R048 = 15 means the supplier works in 15 different product categories
+
+### Next Steps
+
+After generating results:
+
+1. **Filter by severity**: Focus on high-value contracts with multiple red flags
+2. **Investigate patterns**: Look for systemic issues across buyers or suppliers
+3. **Refine configuration**: Adjust thresholds based on false positive rates
+4. **Export for analysis**: Use the `--map` flag to get relationships between entities
+
+**Advanced options:**
+
+```bash
+# Include mappings from contracting processes to organizations
+ocdscardinal indicators --settings settings.ini --map prepared.jsonl > results.json
+
+# Get count of results per group
+ocdscardinal indicators --settings settings.ini --count prepared.jsonl > results.json
+```
+
+---
+
+## Iterative Refinement
+
+Cardinal is designed for iterative analysis. The typical workflow involves multiple rounds of:
+
+1. Running `indicators` with initial settings
+2. Reviewing results for false positives
+3. Adjusting indicator thresholds in `settings.ini`
+4. Re-running to verify improvements
+
+<Accordion title="Example: Reducing false positives for R035">
+  If you find that many contracting processes are flagged by R035 (all except winning bid disqualified) but you know it's common in your jurisdiction to have 2-3 disqualified bids:
+
+  ```ini
+  [R035]
+  threshold = 3  # Only flag if more than 3 non-winning bids are disqualified
+  ```
+
+  This raises the threshold to reduce false positives while still catching extreme cases.
+</Accordion>
+
+---
+
+## Getting Help
+
+Need assistance at any stage?
+
+- **Data conversion**: [data@open-contracting.org](mailto:data@open-contracting.org)
+- **Technical questions**: [jmckinney@open-contracting.org](mailto:jmckinney@open-contracting.org)
+- **Business intelligence tools**: [data@open-contracting.org](mailto:data@open-contracting.org)

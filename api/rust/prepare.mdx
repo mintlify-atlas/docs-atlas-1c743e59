@@ -1,0 +1,324 @@
+---
+title: Prepare Module
+description: Correct and normalize OCDS data for analysis
+---
+
+The `Prepare` module corrects, normalizes, and validates OCDS data. It applies defaults, redacts sensitive information, fixes common data quality issues, and validates against OCDS codelists.
+
+## Function Signature
+
+```rust
+impl Prepare {
+    pub fn run<W: Write + Send>(
+        buffer: impl BufRead + Send,
+        settings: Settings,
+        output: &mut W,
+        errors: &mut W,
+    ) -> Result<(), anyhow::Error>
+}
+```
+
+<ParamField path="buffer" type="impl BufRead + Send" required>
+  Buffered reader containing line-delimited JSON releases to process.
+</ParamField>
+
+<ParamField path="settings" type="Settings" required>
+  Configuration for data preparation, including defaults, redactions, corrections, and modifications.
+</ParamField>
+
+<ParamField path="output" type="&mut W" required>
+  Output writer where corrected releases are written (one JSON object per line).
+</ParamField>
+
+<ParamField path="errors" type="&mut W" required>
+  Error writer where data quality issues are logged in CSV format.
+</ParamField>
+
+## Basic Usage
+
+```rust
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use ocdscardinal::{Prepare, Settings};
+
+fn main() -> Result<(), anyhow::Error> {
+    // Input: raw OCDS data
+    let input = File::open("raw_releases.jsonl")?;
+    let reader = BufReader::new(input);
+    
+    // Output: corrected data
+    let output_file = File::create("corrected_releases.jsonl")?;
+    let mut output = BufWriter::new(output_file);
+    
+    // Errors: data quality report
+    let errors_file = File::create("errors.csv")?;
+    let mut errors = BufWriter::new(errors_file);
+    
+    // Run preparation
+    let settings = Settings::default();
+    Prepare::run(reader, settings, &mut output, &mut errors)?;
+    
+    Ok(())
+}
+```
+
+## Settings Configuration
+
+### Defaults
+
+Apply default values to missing fields:
+
+<ParamField path="defaults" type="Option<Defaults>">
+  ```rust
+  use ocdscardinal::{Settings, Defaults};
+  
+  let mut settings = Settings::default();
+  settings.defaults = Some(Defaults {
+      currency: Some("USD".to_string()),
+      item_classification_scheme: Some("UNSPSC".to_string()),
+      bid_status: Some("valid".to_string()),
+      award_status: Some("active".to_string()),
+      party_roles: Some(true),
+  });
+  ```
+  
+  - **currency**: Default currency for bids/awards without `value.currency`
+  - **item_classification_scheme**: Default scheme for items without `classification.scheme`
+  - **bid_status**: Default status for bids without `status`
+  - **award_status**: Default status for awards without `status`
+  - **party_roles**: If `true`, populate `parties[].roles` based on where organizations appear
+</ParamField>
+
+### Redactions
+
+Remove sensitive information:
+
+<ParamField path="redactions" type="Option<Redactions>">
+  ```rust
+  use ocdscardinal::{Settings, Redactions};
+  
+  let mut settings = Settings::default();
+  settings.redactions = Some(Redactions {
+      amount: Some("0|999999".to_string()),  // Pipe-separated amounts
+      organization_id: Some("REDACTED|UNKNOWN".to_string()),
+  });
+  ```
+  
+  - **amount**: Remove `value.amount` if it matches any of these values
+  - **organization_id**: Remove `id` from organizations matching these IDs
+</ParamField>
+
+### Corrections
+
+Fix common data quality issues:
+
+<ParamField path="corrections" type="Option<Corrections>">
+  ```rust
+  use ocdscardinal::{Settings, Corrections};
+  
+  let mut settings = Settings::default();
+  settings.corrections = Some(Corrections {
+      award_status_by_contract_status: Some(true),
+  });
+  ```
+  
+  - **award_status_by_contract_status**: If all contracts for an award are cancelled, set the award status to "cancelled"
+</ParamField>
+
+### Modifications
+
+Transform data structure:
+
+<ParamField path="modifications" type="Option<Modifications>">
+  ```rust
+  use ocdscardinal::{Settings, Modifications};
+  
+  let mut settings = Settings::default();
+  settings.modifications = Some(Modifications {
+      move_auctions: Some(true),
+      prefix_buyer_or_procuring_entity_id: Some("PE-".to_string()),
+      prefix_tenderer_or_supplier_id: Some("ORG-".to_string()),
+      split_procurement_method_details: Some("-".to_string()),
+  });
+  ```
+  
+  - **move_auctions**: Move bids from `/auctions` to `/bids/details`
+  - **prefix_buyer_or_procuring_entity_id**: Add prefix to buyer/procuring entity IDs
+  - **prefix_tenderer_or_supplier_id**: Add prefix to tenderer/supplier IDs
+  - **split_procurement_method_details**: Split `procurementMethodDetails` on this separator and keep only the first part
+</ParamField>
+
+### Codelists
+
+Map non-standard codelist values to standard OCDS codes:
+
+<ParamField path="codelists" type="Option<HashMap<Codelist, HashMap<String, String>>>">
+  ```rust
+  use std::collections::HashMap;
+  use ocdscardinal::{Settings, Codelist};
+  
+  let mut settings = Settings::default();
+  
+  let mut bid_status_map = HashMap::new();
+  bid_status_map.insert("qualified".to_string(), "valid".to_string());
+  bid_status_map.insert("passed".to_string(), "valid".to_string());
+  
+  let mut award_status_map = HashMap::new();
+  award_status_map.insert("Active".to_string(), "active".to_string());
+  
+  let mut codelists = HashMap::new();
+  codelists.insert(Codelist::BidStatus, bid_status_map);
+  codelists.insert(Codelist::AwardStatus, award_status_map);
+  
+  settings.codelists = Some(codelists);
+  ```
+</ParamField>
+
+## Output Format
+
+### Corrected Data
+
+The `output` writer receives one JSON object per line:
+
+```json
+{"ocid":"ocds-213czf-1","buyer":{"id":"PE-GOV001"},"tender":{...},"bids":{"details":[...]},"awards":[...]}
+{"ocid":"ocds-213czf-2","buyer":{"id":"PE-GOV002"},"tender":{...},"bids":{"details":[...]},"awards":[...]}
+```
+
+### Error Log
+
+The `errors` writer receives a CSV with data quality issues:
+
+```csv
+line,ocid,path,index,value,message
+15,ocds-213czf-1,/bids/details[]/value/currency,0,,not set
+42,ocds-213czf-5,/bids/details[]/status,1,"pending",invalid
+78,ocds-213czf-9,/awards[]/items[]/classification/scheme,0.2,,not set
+```
+
+<ResponseField name="line" type="integer">
+  Line number in the input file (1-based)
+</ResponseField>
+
+<ResponseField name="ocid" type="string">
+  OCID of the release with the issue
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  JSON path to the problematic field
+</ResponseField>
+
+<ResponseField name="index" type="string">
+  Array index or indices (e.g., "0" for single array, "2.1" for nested arrays)
+</ResponseField>
+
+<ResponseField name="value" type="string">
+  The problematic value (empty if missing)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error description (e.g., "not set", "invalid", "is zero")
+</ResponseField>
+
+## Complete Example
+
+```rust
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Write};
+use ocdscardinal::{Prepare, Settings, Defaults, Modifications, Codelist};
+
+fn prepare_ocds_data() -> Result<(), anyhow::Error> {
+    // Setup input and outputs
+    let input = File::open("raw_releases.jsonl")?;
+    let reader = BufReader::new(input);
+    
+    let output_file = File::create("prepared_releases.jsonl")?;
+    let mut output = BufWriter::new(output_file);
+    
+    let errors_file = File::create("quality_issues.csv")?;
+    let mut errors = BufWriter::new(errors_file);
+    
+    // Configure comprehensive settings
+    let mut settings = Settings::default();
+    
+    // Apply defaults
+    settings.defaults = Some(Defaults {
+        currency: Some("USD".to_string()),
+        item_classification_scheme: Some("UNSPSC".to_string()),
+        bid_status: Some("valid".to_string()),
+        award_status: Some("active".to_string()),
+        party_roles: Some(true),
+    });
+    
+    // Prefix organization IDs
+    settings.modifications = Some(Modifications {
+        move_auctions: Some(true),
+        prefix_buyer_or_procuring_entity_id: Some("GOV-".to_string()),
+        prefix_tenderer_or_supplier_id: Some("ORG-".to_string()),
+        split_procurement_method_details: None,
+    });
+    
+    // Map non-standard codes
+    let mut bid_status_map = HashMap::new();
+    bid_status_map.insert("qualified".to_string(), "valid".to_string());
+    
+    let mut codelists = HashMap::new();
+    codelists.insert(Codelist::BidStatus, bid_status_map);
+    settings.codelists = Some(codelists);
+    
+    // Run preparation
+    Prepare::run(reader, settings, &mut output, &mut errors)?;
+    
+    // Ensure all data is flushed
+    output.flush()?;
+    errors.flush()?;
+    
+    println!("Data preparation complete!");
+    println!("Corrected data: prepared_releases.jsonl");
+    println!("Quality issues: quality_issues.csv");
+    
+    Ok(())
+}
+```
+
+## Validation
+
+Prepare automatically validates codelist values against OCDS standards:
+
+- **bid_status**: Must be one of `invited`, `pending`, `valid`, `disqualified`, `withdrawn`
+- **award_status**: Must be one of `pending`, `active`, `unsuccessful`, `cancelled`
+
+Invalid values are logged to the errors output but not modified.
+
+## Data Transformations
+
+Prepare performs these transformations:
+
+1. **ID normalization**: Converts numeric IDs to strings
+2. **Object coercion**: Converts single objects to arrays where OCDS expects arrays (e.g., `suppliers`, `tenderers`)
+3. **Role inference**: Populates `parties[].roles` based on where organizations appear in the release
+4. **Auction migration**: Moves bid data from `/auctions/*/stages/*/bids` to `/bids/details`
+
+## Performance
+
+- **Parallel processing**: Uses Rayon for multi-threaded execution
+- **Streaming I/O**: Buffers both input and output for efficiency
+- **Error isolation**: Invalid lines don't stop processing
+
+<Warning>
+For deterministic output order, set `RAYON_NUM_THREADS=1`. This is useful for testing but reduces performance.
+</Warning>
+
+## Notes
+
+- Lines that are not JSON objects are skipped with a warning
+- Empty lines (whitespace only) are silently skipped
+- The function flushes output buffers before returning to ensure all data is written
+- Organization IDs that match redaction patterns are completely removed (not just masked)
+
+## Related
+
+- [CLI Prepare Command](/cli/prepare)
+- [Settings Reference](/topics/settings)
+- [Indicators Module](/api/rust/indicators)

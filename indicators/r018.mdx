@@ -1,0 +1,74 @@
+---
+title: "R018 - Single bid received"
+description: "Detects competitive procedures where only one tenderer submitted a bid"
+---
+
+Only one tenderer submitted a bid in a competitive procurement procedure.
+
+## Methodology
+
+A contracting process is flagged if:
+- The number of tenderers (`/tender/numberOfTenderers`) is 1, AND
+- The procurement method is **competitive** (default: `/tender/procurementMethod` is 'open' or 'selective')
+
+<Note>
+**Example**: The Ministry of Education publishes an open opportunity and receives a single bid. Despite being an open competition, no other suppliers participated.
+</Note>
+
+<Warning>
+**Why is this a red flag?**
+
+In a competitive procedure, a lack of competition might correspond to a *suppression* of competition and can represent the ideal outcome for a corrupt buyer and pre-determined bidder. The corrupt buyer may have designed specifications to favor a single supplier, or discouraged other bidders through informal channels.
+</Warning>
+
+<small>
+Based on "Single bidder" in [*An Objective Corruption Risk Index Using Public Procurement Data*](https://www.researchgate.net/publication/301646354_An_Objective_Corruption_Risk_Index_Using_Public_Procurement_Data).
+</small>
+
+## Output
+
+The indicator's value is always `1.0` when a contracting process is flagged.
+
+## Configuration
+
+All configuration is optional.
+
+<ParamField path="procurement_methods" type="string" default="open|selective">
+  Override the default competitive procurement methods. Provide as a pipe-separated list.
+  
+  ```ini
+  [R018]
+  procurement_methods = open|selective
+  ```
+</ParamField>
+
+## Example Output
+
+**Input** (OCDS JSONL):
+```json
+{"ocid": "ocds-213czf-000-00001", "tender": {"procurementMethod": "open", "numberOfTenderers": 1}}
+```
+
+**Command**:
+```bash
+ocdscardinal indicators --settings settings.ini --no-meta data.jsonl
+```
+
+**Output**:
+```json
+{"OCID":{"ocds-213czf-000-00001":{"R018":1.0}}}
+```
+
+## Implementation Details
+
+From `src/indicators/r018.rs:24-32`:
+
+The indicator:
+1. Checks if the procurement method matches the configured competitive methods
+2. Retrieves the `numberOfTenderers` field from the tender
+3. Flags the process if the value equals exactly 1
+4. Uses a simple boolean check - no complex calculations needed
+
+<Note>
+This indicator relies on accurate reporting of `numberOfTenderers` in the OCDS data. If this field is not populated, the indicator will not flag any processes.
+</Note>

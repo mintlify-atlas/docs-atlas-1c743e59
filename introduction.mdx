@@ -1,0 +1,188 @@
+---
+title: "Introduction"
+description: "Learn about Cardinal, a powerful tool for analyzing OCDS procurement data and detecting red flags"
+---
+
+## What is Cardinal?
+
+Cardinal is a high-performance command-line tool and library for measuring red flags and procurement indicators using [Open Contracting Data Standard (OCDS)](https://standard.open-contracting.org/) data. Built in Rust for exceptional performance, Cardinal helps anti-corruption agencies, civil society organizations, government oversight bodies, and researchers identify potential irregularities in public procurement processes.
+
+<Note>
+  Cardinal is developed by the [Open Contracting Partnership](https://www.open-contracting.org/) and released as open source software under the MIT license.
+</Note>
+
+## What is OCDS?
+
+The **Open Contracting Data Standard (OCDS)** is an open data standard for publication of structured information on all stages of a contracting process, from planning through implementation. OCDS provides a common format that allows procurement data to be shared, compared, and analyzed across different publishers and jurisdictions.
+
+Cardinal processes OCDS data in the form of **compiled releases** - aggregated records that combine all the releases for a single contracting process into one document. This format provides a complete view of each procurement from tender through contract implementation.
+
+## Key Features
+
+Cardinal provides powerful capabilities for procurement data analysis:
+
+### Red Flag Detection
+
+Cardinal calculates **11 procurement red flag indicators** that may signal corruption, collusion, or other irregularities:
+
+- Short submission periods
+- Single bid received
+- Suspicious pricing patterns
+- Excessive bid disqualifications
+- Identical bid prices across tenderers
+- Late bids winning contracts
+- Lowest bids being disqualified
+- And more...
+
+Each indicator can be configured with thresholds and exclusions tailored to your specific context.
+
+### Data Quality Correction
+
+Before calculating indicators, Cardinal's **prepare** command:
+
+- Identifies and corrects quality issues in OCDS data
+- Fills in missing values using configurable defaults
+- Normalizes ID fields to prevent lookup failures
+- Re-maps invalid codes to valid ones
+- Redacts placeholder values that would skew results
+- Reports all issues as structured CSV output
+
+### High Performance
+
+Cardinal is built in Rust for maximum efficiency:
+
+- Processes line-delimited JSON files with parallel processing
+- Handles large datasets with millions of contracting processes
+- Provides fast feedback loops for iterative analysis
+- Minimal memory footprint
+
+### Flexible Configuration
+
+Customize Cardinal's behavior through an INI settings file:
+
+- Configure thresholds for each indicator
+- Set default values for missing fields
+- Define exclusions based on procurement methods
+- Specify currency and classification schemes
+- Control data transformations and corrections
+
+## How Cardinal Works
+
+Cardinal follows a three-stage workflow:
+
+<Steps>
+  <Step title="Initialize settings">
+    Generate a default configuration file with all indicators enabled and documented:
+    
+    ```bash
+    ocdscardinal init settings.ini
+    ```
+  </Step>
+  
+  <Step title="Prepare data">
+    Correct quality issues and standardize your OCDS data:
+    
+    ```bash
+    ocdscardinal prepare --settings settings.ini \
+      --output prepared.jsonl \
+      --errors issues.csv \
+      input.jsonl
+    ```
+  </Step>
+  
+  <Step title="Calculate indicators">
+    Run red flag analysis and generate results:
+    
+    ```bash
+    ocdscardinal indicators --settings settings.ini \
+      prepared.jsonl > results.json
+    ```
+  </Step>
+</Steps>
+
+## Output Format
+
+Cardinal organizes indicator results by **group** and **identifier**:
+
+```json
+{
+  "OCID": {
+    "ocds-213czf-1": {
+      "R036": 1.0,
+      "R058": 0.75
+    }
+  },
+  "Buyer": {
+    "DO-UC-55216": {
+      "R038": 0.85
+    }
+  },
+  "Tenderer": {
+    "DO-RPE-1422": {
+      "R025": 0.12,
+      "R048": 2.5
+    }
+  },
+  "Meta": {
+    "R024": {
+      "q1": 66.67,
+      "q3": 100.0,
+      "lower_fence": 16.67
+    }
+  }
+}
+```
+
+- **Groups** represent the type of entity: OCID (contracting process), Buyer, ProcuringEntity, or Tenderer
+- **Identifiers** are extracted from the OCDS data (like `/ocid`, `/buyer/id`, etc.)
+- **Indicator codes** (like R036, R058) represent specific red flags
+- **Values** are numeric results - only indicators that triggered appear in the output
+- **Meta** provides statistical information about quartiles and fences used in calculations
+
+## Use Cases
+
+Cardinal is designed for organizations and individuals working to improve procurement integrity:
+
+<CardGroup cols={2}>
+  <Card title="Anti-Corruption Agencies" icon="shield-halved">
+    Investigate procurement fraud by identifying suspicious patterns across large datasets
+  </Card>
+  
+  <Card title="Civil Society Organizations" icon="users">
+    Monitor public spending and hold governments accountable for procurement practices
+  </Card>
+  
+  <Card title="Government Oversight Bodies" icon="landmark">
+    Audit contracting processes systematically and prioritize reviews based on risk indicators
+  </Card>
+  
+  <Card title="Researchers" icon="magnifying-glass-chart">
+    Analyze procurement patterns and behaviors to inform policy and improve understanding of corruption risks
+  </Card>
+</CardGroup>
+
+## Data Sources
+
+Cardinal works with OCDS data from any source. The [OCP Data Registry](https://data.open-contracting.org) provides access to data from over 50 publishers worldwide, already formatted as OCDS compiled releases in line-delimited JSON files.
+
+If your data isn't in OCDS format, the Open Contracting Partnership's [Data Support Team](mailto:data@open-contracting.org) can help with conversion.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Install Cardinal" icon="download" href="/installation">
+    Get Cardinal installed on your system using Cargo, pip, or npm
+  </Card>
+  
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Run your first analysis with Cardinal in minutes
+  </Card>
+  
+  <Card title="Commands" icon="terminal" href="/commands/init">
+    Explore all available CLI commands and their options
+  </Card>
+  
+  <Card title="Indicators" icon="flag" href="/indicators/overview">
+    Learn about each red flag indicator and how it's calculated
+  </Card>
+</CardGroup>

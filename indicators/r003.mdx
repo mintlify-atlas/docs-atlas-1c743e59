@@ -1,0 +1,99 @@
+---
+title: "R003 - Short submission period"
+description: "Detects contracting processes where the submission period is too short"
+---
+
+The submission period is too short.
+
+The submission period starts with contracting documents being available to potential suppliers and ends with the submission deadline for expressions of interest or bids.
+
+## Methodology
+
+For each contracting process, the **submission period** is calculated as:
+
+```
+(/tender/tenderPeriod/endDate - /tender/tenderPeriod/startDate) in whole days
+```
+
+A contracting process is flagged if the submission period is shorter than the **threshold** of 15 whole days.
+
+<Note>
+**Example**: The National Rail Service publishes a tender notice on March 15 with a submission deadline of March 20. The submission period is 5 days, which is less than the default threshold of 15 days, so this contracting process would be flagged.
+</Note>
+
+<Warning>
+**Why is this a red flag?**
+
+A corrupt buyer can give the pre-determined bidder an unfair advantage by privately informing the pre-determined bidder of the opportunity in advance, and by giving other bidders less time to prepare competitive bids.
+</Warning>
+
+<small>
+Based on "Shortened time span for bidding process" in [*Corruption in Public Procurement: Finding the Right Indicators*](https://www.researchgate.net/publication/303359108_Corruption_in_Public_Procurement_Finding_the_Right_Indicators), "Short submission period" in [*An Objective Corruption Risk Index Using Public Procurement Data*](https://www.researchgate.net/publication/301646354_An_Objective_Corruption_Risk_Index_Using_Public_Procurement_Data), "Short or inadequate notice to bidders" in [*Guide to Combating Corruption & Fraud in Infrastructure Development Projects*](https://guide.iacrc.org/red-flag-short-or-inadequate-notice-to-bidders/), and "Deadline for submitting bids is very short" in [*Fraud in Public Procurement: A collection of Red Flags and Best Practices*](https://ec.europa.eu/sfc/system/files/documents/sfc-files/fraud-public-procurement-final-20122017-ares20176254403.pdf).
+</small>
+
+## Output
+
+The indicator's value is always `1.0` when a contracting process is flagged.
+
+## Configuration
+
+All configuration is optional.
+
+<ParamField path="threshold" type="integer" default="15">
+  The minimum number of whole days required for the submission period. Contracting processes with shorter periods are flagged.
+  
+  Add to your settings file:
+  ```ini
+  [R003]
+  threshold = 15
+  ```
+</ParamField>
+
+<ParamField path="procurement_method_details" type="object">
+  Set different thresholds based on procurement method details (`/tender/procurementMethodDetails`). Useful for aligning with jurisdiction-specific legislation.
+  
+  Add a `[R003.procurement_method_details]` section where property names are `/tender/procurementMethodDetails` values:
+  ```ini
+  [R003.procurement_method_details]
+  Cotización = 7
+  Licitación = 10
+  Licitación de Seguros = 10
+  ```
+</ParamField>
+
+<ParamField path="procurement_methods" type="string">
+  Calculate this indicator only for specific procurement methods (`/tender/procurementMethod`). Provide as a pipe-separated list.
+  
+  ```ini
+  [R003]
+  procurement_methods = open|selective|limited
+  ```
+</ParamField>
+
+## Example Output
+
+**Input** (OCDS JSONL):
+```json
+{"ocid": "ocds-213czf-000-00001", "tender": {"tenderPeriod": {"startDate": "2024-03-01T00:00:00Z", "endDate": "2024-03-06T23:59:59Z"}}}
+```
+
+**Command**:
+```bash
+ocdscardinal indicators --settings settings.ini --no-meta data.jsonl
+```
+
+**Output**:
+```json
+{"OCID":{"ocds-213czf-000-00001":{"R003":1.0}}}
+```
+
+## Implementation Details
+
+From `src/indicators/r003.rs:27-49`:
+
+The indicator:
+1. Checks if the tender has a `tenderPeriod` with both `startDate` and `endDate`
+2. Calculates the duration in whole days using `num_days()`
+3. Determines the applicable threshold (custom per procurement method details, or default)
+4. Flags the process if `duration < threshold`
+5. Only processes tenders matching configured procurement methods (if specified)

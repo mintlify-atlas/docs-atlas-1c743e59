@@ -1,0 +1,321 @@
+---
+title: Coverage Module
+description: Analyze field coverage and completeness in OCDS datasets
+---
+
+The `Coverage` module counts how many times each field appears with non-empty values in an OCDS dataset. This is useful for understanding data completeness and identifying commonly used fields.
+
+## Function Signature
+
+```rust
+impl Coverage {
+    pub fn run(
+        buffer: impl BufRead + Send
+    ) -> Result<Self, anyhow::Error>
+}
+```
+
+<ParamField path="buffer" type="impl BufRead + Send" required>
+  Buffered reader containing line-delimited JSON releases to analyze.
+</ParamField>
+
+## Basic Usage
+
+```rust
+use std::fs::File;
+use std::io::BufReader;
+use ocdscardinal::Coverage;
+
+fn main() -> Result<(), anyhow::Error> {
+    let file = File::open("releases.jsonl")?;
+    let reader = BufReader::new(file);
+    
+    // Analyze coverage
+    let coverage = Coverage::run(reader)?;
+    
+    // Access results
+    for (path, count) in coverage.results() {
+        println!("{}: {}", path, count);
+    }
+    
+    Ok(())
+}
+```
+
+## Result Structure
+
+The `Coverage` struct contains field counts:
+
+```rust
+pub struct Coverage {
+    counts: IndexMap<String, u32>,
+}
+
+impl Coverage {
+    pub const fn results(&self) -> &IndexMap<String, u32> {
+        &self.counts
+    }
+}
+```
+
+<ResponseField name="results()" type="&IndexMap<String, u32>">
+  Returns an ordered map where:
+  - **Key**: JSON path to a field
+  - **Value**: Number of times that field contained a non-empty value
+  
+  The results are ordered by the path structure as discovered during processing.
+</ResponseField>
+
+## Path Format
+
+Coverage uses a special path notation:
+
+<ParamField path='Empty string ("")'>  
+  Represents a complete line (JSON object). The count equals the number of valid JSON objects processed.
+</ParamField>
+
+<ParamField path="Path ending with /">
+  Represents a JSON object. Example: `tender/` indicates the `tender` object.
+</ParamField>
+
+<ParamField path="Path ending with []">
+  Represents an array element. Example: `awards[]` indicates items in the `awards` array.
+</ParamField>
+
+<ParamField path="Other paths">
+  Represent object members. Example: `ocid` is the OCID field.
+</ParamField>
+
+<ParamField path="Path ending with /">
+  Represents a JSON object. Example: `tender/` indicates the `tender` object.
+</ParamField>
+
+<ParamField path="Path ending with []">
+  Represents an array element. Example: `awards[]` indicates an element in the `awards` array.
+</ParamField>
+
+<ParamField path="Other paths">
+  Represent object members. Example: `tender/procurementMethod` indicates the `procurementMethod` field.
+</ParamField>
+
+### Example Paths
+
+```
+""                                    -> 1000 lines processed
+tender/                               -> 998 releases have a tender object
+tender/procurementMethod              -> 995 releases have tender.procurementMethod
+awards[]                              -> 3421 total awards across all releases
+awards[]/status                       -> 3400 awards have a status
+bids/details[]                        -> 1852 total bids
+bids/details[]/value/amount           -> 1847 bids have an amount
+parties[]/identifier/id               -> 4521 parties have an identifier ID
+```
+
+## What Counts as "Non-Empty"?
+
+A field is counted only if it contains a non-empty value:
+
+<ParamField path="Empty values (not counted)">
+  - `null`
+  - Empty string: `""`
+  - Empty array: `[]`
+  - Empty object: `{}`
+  - Objects/arrays containing only empty values
+</ParamField>
+
+<ParamField path="Non-empty values (counted)">
+  - Non-empty strings: `"active"`, `"ocds-213czf-1"`
+  - Numbers: `0`, `100.5`, `-1`
+  - Booleans: `true`, `false`
+  - Non-empty arrays and objects
+</ParamField>
+
+<Info>
+Note that `0` and `false` are considered non-empty and are counted.
+</Info>
+
+## Complete Example
+
+```rust
+use std::fs::File;
+use std::io::{BufReader, Write};
+use ocdscardinal::Coverage;
+
+fn analyze_dataset_coverage() -> Result<(), anyhow::Error> {
+    let file = File::open("releases.jsonl")?;
+    let reader = BufReader::new(file);
+    
+    // Run coverage analysis
+    let coverage = Coverage::run(reader)?;
+    
+    // Get total number of releases
+    let total_releases = coverage.results()
+        .get("")
+        .copied()
+        .unwrap_or(0);
+    
+    println!("Total releases: {}", total_releases);
+    println!("\nField coverage:\n");
+    
+    // Calculate coverage percentages
+    let mut paths: Vec<_> = coverage.results().iter().collect();
+    paths.sort_by_key(|(path, _)| *path);
+    
+    for (path, count) in paths {
+        if !path.is_empty() && total_releases > 0 {
+            let percentage = (*count as f64 / total_releases as f64) * 100.0;
+            println!("{:50} {:6} ({:5.1}%)", path, count, percentage);
+        }
+    }
+    
+    // Find rarely used fields (less than 10% coverage)
+    println!("\nRarely used fields (< 10%):");
+    for (path, count) in coverage.results() {
+        if !path.is_empty() && total_releases > 0 {
+            let percentage = (*count as f64 / total_releases as f64) * 100.0;
+            if percentage < 10.0 {
+                println!("  {} ({:.1}%)", path, percentage);
+            }
+        }
+    }
+    
+    // Write results to JSON
+    let output = File::create("coverage.json")?;
+    serde_json::to_writer_pretty(output, coverage.results())?;
+    
+    Ok(())
+}
+```
+
+## Use Cases
+
+### Data Quality Assessment
+
+Identify which OCDS fields are actually being used:
+
+```rust
+let coverage = Coverage::run(reader)?;
+let total = coverage.results().get("").copied().unwrap_or(0);
+
+// Check critical field coverage
+let required_fields = [
+    "ocid",
+    "tender/procurementMethod",
+    "awards[]/status",
+    "bids/details[]/value/amount",
+];
+
+for field in required_fields {
+    let count = coverage.results().get(field).copied().unwrap_or(0);
+    let pct = (count as f64 / total as f64) * 100.0;
+    
+    if pct < 90.0 {
+        println!("WARNING: {} only present in {:.1}% of releases", field, pct);
+    }
+}
+```
+
+### Dataset Comparison
+
+Compare field usage across different datasets:
+
+```rust
+let coverage_a = Coverage::run(reader_a)?;
+let coverage_b = Coverage::run(reader_b)?;
+
+for (path, count_a) in coverage_a.results() {
+    if let Some(count_b) = coverage_b.results().get(path) {
+        let diff = (*count_a as i64 - *count_b as i64).abs();
+        if diff > 100 {
+            println!("{}: {} vs {}", path, count_a, count_b);
+        }
+    }
+}
+```
+
+### Extension Field Detection
+
+Find custom extension fields (not in core OCDS):
+
+```rust
+let core_fields = [
+    "ocid", "id", "date", "tag", "initiationType",
+    "tender/", "awards[]", "contracts[]", "parties[]",
+    // ... more core fields
+];
+
+for (path, count) in coverage.results() {
+    let is_core = core_fields.iter().any(|prefix| path.starts_with(prefix));
+    if !is_core && !path.is_empty() {
+        println!("Extension field: {} (used {} times)", path, count);
+    }
+}
+```
+
+## Performance
+
+- **Parallel processing**: Uses Rayon to process lines concurrently
+- **Memory efficient**: Doesn't store full JSON objects, only path counts
+- **Streaming**: Processes data line-by-line without loading entire file
+
+<Tip>
+For very large datasets (millions of releases), consider processing in chunks and aggregating results.
+</Tip>
+
+## Algorithm Details
+
+The coverage algorithm:
+
+1. Walks the JSON tree recursively
+2. Identifies empty nodes (`null`, `""`, `[]`, `{}`, or containing only empty nodes)
+3. Counts non-empty leaf nodes and their parent paths
+4. Aggregates counts across all releases using parallel reduction
+
+```rust
+// Simplified algorithm
+fn add(&mut self, value: Value, path: &mut Vec<String>) -> bool {
+    match value {
+        Value::Null => false,  // Don't count
+        Value::String(s) => !s.is_empty(),  // Count if non-empty
+        Value::Number(_) | Value::Bool(_) => true,  // Always count
+        Value::Array(items) => {
+            // Count if array has any non-empty elements
+            items.into_iter().any(|item| self.add(item, path))
+        }
+        Value::Object(map) => {
+            // Count if object has any non-empty values
+            map.into_iter().any(|(k, v)| {
+                path.push(k);
+                let result = self.add(v, path);
+                path.pop();
+                result
+            })
+        }
+    }
+}
+```
+
+## Python API
+
+Coverage is also available in Python (requires `python` feature):
+
+```python
+import ocdscardinal
+
+coverage = ocdscardinal.coverage("releases.jsonl")
+for path, count in coverage.items():
+    print(f"{path}: {count}")
+```
+
+## Notes
+
+- Path counting is cumulative: if `tender/procurementMethod` is counted, then `tender/` is also counted
+- Array indices are not tracked individually; all array elements contribute to the `[]` path
+- The longest observed path has 6 components, longest JSON pointer has 10
+- Invalid JSON lines are skipped with a warning and don't affect counts
+
+## Related
+
+- [CLI Coverage Command](/cli/coverage)
+- [Indicators Module](/api/rust/indicators)
+- [Data Quality Guide](/topics/workflow)

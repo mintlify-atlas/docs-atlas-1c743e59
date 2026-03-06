@@ -1,0 +1,146 @@
+---
+title: "R038: Excessive disqualified bids"
+description: "Detects when the ratio of disqualified to submitted bids is a high outlier"
+---
+
+The ratio of disqualified bids to submitted bids is a high outlier per buyer, procuring entity, or tenderer.
+
+<Note>
+See also: [R035 - All except winning bid disqualified](/indicators/r035)
+</Note>
+
+## Methodology
+
+This indicator calculates ratios and uses statistical outlier detection to flag suspicious patterns.
+
+### For Buyers and Procuring Entities
+
+For each buyer, the **ratio** is calculated as:
+
+$$
+\frac{\text{numberOfBidsDisqualifiedByBuyer}}{\text{numberOfBidsSubmittedToBuyer}}
+$$
+
+A buyer is flagged if its ratio is greater than or equal to the **upper fence** of:
+
+$$
+Q_3 + 1.5(IQR)
+$$
+
+where $Q_3$ is the third quartile and $IQR$ is the interquartile range for the set of ratios.
+
+The same methodology applies to procuring entities.
+
+### For Tenderers
+
+For each tenderer, the **ratio** is calculated as:
+
+$$
+\frac{\text{numberOfBidsDisqualifiedForTenderer}}{\text{numberOfBidsSubmittedByTenderer}}
+$$
+
+A tenderer is flagged using the same upper fence calculation.
+
+<Tip>
+**Example for a buyer or procuring entity**
+
+25% ($Q_1$) of buyers in Atlantis disqualify at most 2% of bids received. 75% ($Q_3$) of buyers disqualify at most 22% of bids received. This yields an upper fence of 52%.
+
+The State Water Corporation disqualified 59% of bids received. This is more than the upper fence of 52%. Therefore, the State Water Corporation is flagged.
+</Tip>
+
+<Tip>
+**Example for a tenderer**
+
+25% ($Q_1$) of bidders in Atlantis have no disqualified bids. 75% ($Q_3$) of bidders have at most 24% disqualified bids. This yields an upper fence of 60%.
+
+73% of the bids submitted by MisconductCorp were disqualified. This is higher than the upper fence of 60%. Therefore, MisconductCorp is flagged.
+</Tip>
+
+<Info>
+**Why is this a red flag?**
+
+A corrupt buyer or procuring entity can award pre-determined bidders by disqualifying other bidders' bids.
+
+A colluding bidder can mimic competition by submitting deliberately unqualified bids.
+</Info>
+
+<sub>Based on "Excluding qualified bidders" in [*Guide to Combating Corruption & Fraud in Infrastructure Development Projects*](https://guide.iacrc.org/potential-scheme-excluding-qualified-bidders/) and [*Behind the Scenes of ProZorro: Does Ukrainian business trust public procurement?*](https://ti-ukraine.org/wp-content/uploads/2019/11/Behind-the-Scenes-of-ProZorro.-Does-Ukrainian-business-trust-public-procurement.pdf).</sub>
+
+## Output
+
+The indicator's value is the **ratio**, as a decimal (between 0.0 and 1.0).
+
+If the `--map` command-line flag is set, the `Maps` key contains:
+
+<ParamField path="ocid_buyer_r038" type="map">
+  The buyer for each `ocid` in which at least one bid is disqualified.
+</ParamField>
+
+<ParamField path="ocid_procuringentity_r038" type="map">
+  The procuring entity for each `ocid` in which at least one bid is disqualified.
+</ParamField>
+
+## Configuration
+
+All configuration is optional.
+
+<ParamField path="R038.threshold" type="float">
+  Override the calculated upper fence with a fixed threshold. If not set, the upper fence is calculated using $Q_3 + 1.5(IQR)$.
+</ParamField>
+
+<ParamField path="R038.minimum_submitted_bids" type="integer" default={2}>
+  Minimum number of submitted bids for a tenderer to be included in the analysis. Tenderers with fewer bids are excluded.
+</ParamField>
+
+<ParamField path="R038.minimum_contracting_processes" type="integer" default={2}>
+  Minimum number of contracting processes for a buyer or procuring entity to be included in the analysis.
+</ParamField>
+
+```ini
+[R038]
+threshold = 0.5  # optional: override calculated upper fence
+minimum_submitted_bids = 2  # default
+minimum_contracting_processes = 2  # default
+```
+
+<Warning>
+Put all properties under one `[R038]` section in your settings file.
+</Warning>
+
+## Implementation Details
+
+The indicator (from `src/indicators/r038.rs`):
+
+- Tracks disqualified and submitted bid counts for buyers, procuring entities, and tenderers
+- Calculates ratios as fractions (numerator/denominator)
+- Uses statistical analysis (quartiles and IQR) to determine outliers
+- Only flags entities meeting minimum threshold requirements
+- Skips flagging if 75% of cases have no disqualified bids (upper fence = 0)
+- Stores metadata about Q1, Q3, and upper fence calculations
+
+## Assumptions
+
+This indicator assumes that `/buyer/id`, `/tender/procuringEntity/id` and `/bids/details[]/tenderers[]/id` are stable across contracting processes.
+
+<Note>
+Is this assumption not true for your data? Please contribute to [GitHub issue #32](https://github.com/open-contracting/cardinal-rs/issues/32).
+</Note>
+
+## Demonstration
+
+**Input**
+
+```json
+// Example OCDS releases showing excessive disqualification pattern
+```
+
+**Output**
+
+```bash
+ocdscardinal indicators --settings docs/examples/settings.ini --no-meta docs/examples/R/038.jsonl
+```
+
+```json
+{"Buyer":{"B":{"R038":0.5}}}
+```

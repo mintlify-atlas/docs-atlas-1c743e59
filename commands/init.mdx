@@ -1,0 +1,202 @@
+---
+title: cardinal init
+description: Initialize a settings file for configuring Cardinal commands
+---
+
+The `init` command writes a default settings file for configuration. This settings file is used by the `prepare` and `indicators` commands to customize their behavior.
+
+## Command Syntax
+
+```bash
+cardinal init [OPTIONS] <FILE>
+```
+
+### Arguments
+
+<ParamField path="FILE" type="string" required>
+  The path to the settings file to write. Use `-` to write to standard output.
+</ParamField>
+
+### Options
+
+<ParamField path="--force" type="boolean" default="false">
+  Overwrite the settings file if it already exists. Use `-f` as a shorthand.
+</ParamField>
+
+<ParamField path="--verbose" type="flag">
+  Increase verbosity. Use `-v` as a shorthand. Can be repeated for more verbosity.
+</ParamField>
+
+## Usage Examples
+
+<CodeGroup>
+
+```bash Write to file
+cardinal init settings.ini
+```
+
+```bash Preview to console
+cardinal init -
+```
+
+```bash Force overwrite
+cardinal init --force settings.ini
+```
+
+</CodeGroup>
+
+### Example Output
+
+When writing to a file:
+
+```
+Settings written to settings.ini.
+```
+
+When previewing with `-`, the command outputs the default settings file content:
+
+```ini
+; currency = USD
+; no_price_comparison_procurement_methods = Random Selection
+; price_comparison_procurement_methods = Reverse Auction
+
+[output]
+; info_currency_mismatches = true
+
+; `prepare` command
+;
+; Read the documentation at:
+; https://cardinal.readthedocs.io/en/latest/cli/prepare.html
+
+[defaults]
+; currency = USD
+; item_classification_scheme = UNSPSC
+; bid_status = valid
+; award_status = active
+; party_roles = true
+
+[redactions]
+; amount = 0
+; organization_id = placeholder
+
+[corrections]
+; award_status_by_contract_status = true
+
+[modifications]
+; move_auctions = true
+; prefix_buyer_or_procuring_entity_id = DO-UC-
+; prefix_tenderer_or_supplier_id = DO-RPE-
+; split_procurement_method_details = -
+
+[codelists.bid_status]
+; qualified = valid
+
+[codelists.award_status]
+; Active = active
+
+; `indicators` command
+;
+; Read the documentation at:
+; https://cardinal.readthedocs.io/en/latest/cli/indicators/
+
+[exclusions]
+; procurement_method_details = Random Selection
+
+[R003]
+; threshold = 15
+; procurement_methods = open|selective|limited
+
+[R003.procurement_method_details]
+; emergency = 10
+; international = 25
+
+[R018]
+; procurement_methods = open|selective
+
+[R024]
+; threshold = 0.05
+
+[R025]
+; percentile = 75
+; threshold = 0.05
+
+[R028]
+
+[R030]
+
+[R035]
+; threshold = 1
+
+[R036]
+
+[R038]
+; threshold = 0.5
+; minimum_submitted_bids = 2
+; minimum_contracting_processes = 2
+
+[R048]
+; digits = 2
+; threshold = 10
+; minimum_contracting_processes = 20
+
+[R058]
+; threshold = 0.5
+```
+
+## Settings File Structure
+
+The generated settings file is in INI format with:
+
+- **Global settings**: Currency and procurement method configurations
+- **`[defaults]`**: Default values for missing fields (used by `prepare`)
+- **`[redactions]`**: Values to redact from the data (used by `prepare`)
+- **`[corrections]`**: Data correction rules (used by `prepare`)
+- **`[modifications]`**: Data transformation rules (used by `prepare`)
+- **`[codelists.*]`**: Code remapping for standardization (used by `prepare`)
+- **`[exclusions]`**: Global exclusion rules (used by `indicators`)
+- **Indicator sections** (e.g., `[R003]`, `[R024]`): Configuration for specific indicators
+
+<Note>
+All configuration values in the default file are commented out. Uncomment and modify the values you need for your data.
+</Note>
+
+## Common Workflow
+
+<Steps>
+  <Step title="Initialize settings file">
+    Create a settings file to configure Cardinal's behavior:
+    ```bash
+    cardinal init settings.ini
+    ```
+  </Step>
+  
+  <Step title="Preview default settings">
+    View the default configuration before editing:
+    ```bash
+    cardinal init -
+    ```
+  </Step>
+  
+  <Step title="Customize settings">
+    Edit `settings.ini` to uncomment and modify settings for your specific data.
+  </Step>
+  
+  <Step title="Use with other commands">
+    Pass the settings file to `prepare` or `indicators` commands:
+    ```bash
+    cardinal prepare --settings settings.ini --output out.jsonl --errors errors.csv input.jsonl
+    cardinal indicators --settings settings.ini prepared.jsonl > results.json
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prepare Command" icon="wrench" href="/commands/prepare">
+    Learn how to use settings to correct quality issues in your data
+  </Card>
+  <Card title="Indicators Command" icon="flag" href="/commands/indicators">
+    Configure and calculate procurement indicators
+  </Card>
+</CardGroup>

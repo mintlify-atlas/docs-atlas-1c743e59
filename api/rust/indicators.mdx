@@ -1,0 +1,332 @@
+---
+title: Indicators Module
+description: Calculate red flags and procurement indicators from OCDS data
+---
+
+The `Indicators` module calculates red flags and procurement indicators across OCDS releases. It processes line-delimited JSON files in parallel and returns indicator scores grouped by entity.
+
+## Function Signature
+
+```rust
+impl Indicators {
+    pub fn run(
+        buffer: impl BufRead + Send,
+        settings: Settings,
+        map: &bool,
+    ) -> Result<Self, anyhow::Error>
+}
+```
+
+<ParamField path="buffer" type="impl BufRead + Send" required>
+  Buffered reader containing line-delimited JSON releases. Each line must be a valid OCDS release.
+</ParamField>
+
+<ParamField path="settings" type="Settings" required>
+  Configuration specifying which indicators to calculate and their thresholds. Enable indicators by setting their field to `Some(...)` in the Settings struct.
+</ParamField>
+
+<ParamField path="map" type="&bool" required>
+  Whether to include mapping data linking contracting processes to organizations. Set to `true` to populate the `maps` field in results.
+</ParamField>
+
+## Basic Usage
+
+```rust
+use std::fs::File;
+use std::io::BufReader;
+use ocdscardinal::{Indicators, Settings};
+
+fn main() -> Result<(), anyhow::Error> {
+    let file = File::open("releases.jsonl")?;
+    let reader = BufReader::new(file);
+    
+    // Configure which indicators to calculate
+    let mut settings = Settings::default();
+    settings.R036 = Some(Default::default());
+    settings.R038 = Some(Default::default());
+    
+    // Calculate indicators
+    let indicators = Indicators::run(reader, settings, &false)?;
+    
+    // Access results
+    for (group, entities) in indicators.results() {
+        for (entity_id, scores) in entities {
+            for (indicator, score) in scores {
+                println!("{:?} {} {:?}: {}", group, entity_id, indicator, score);
+            }
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Settings Configuration
+
+### Global Settings
+
+<ParamField path="currency" type="Option<String>">
+  Currency code for amount comparisons (e.g., `"USD"`). Required for indicators that compare bid amounts.
+</ParamField>
+
+<ParamField path="exclusions" type="Option<Exclusions>">
+  Exclude contracting processes by procurement method details:
+  
+  ```rust
+  settings.exclusions = Some(Exclusions {
+      procurement_method_details: Some("Emergency|Direct".to_string()),
+  });
+  ```
+</ParamField>
+
+<ParamField path="no_price_comparison_procurement_methods" type="Option<String>">
+  Pipe-separated procurement methods where price comparison indicators should not apply.
+</ParamField>
+
+<ParamField path="price_comparison_procurement_methods" type="Option<String>">
+  Pipe-separated procurement methods where price comparison indicators should apply. Overrides `no_price_comparison_procurement_methods`.
+</ParamField>
+
+### Indicator-Specific Settings
+
+Each indicator has its own configuration struct. Enable an indicator by setting it to `Some(...)`:
+
+<ParamField path="R003" type="Option<R003>">
+  Submission period indicator:
+  
+  ```rust
+  settings.R003 = Some(R003 {
+      threshold: Some(15),  // Days
+      procurement_methods: Some("open|selective".to_string()),
+      procurement_method_details: Some(HashMap::from([
+          ("emergency".to_string(), 10),
+          ("international".to_string(), 25),
+      ])),
+  });
+  ```
+</ParamField>
+
+<ParamField path="R018" type="Option<R018>">
+  No competitive bids:
+  
+  ```rust
+  settings.R018 = Some(R018 {
+      procurement_methods: Some("open|selective".to_string()),
+  });
+  ```
+</ParamField>
+
+<ParamField path="R024" type="Option<FloatThreshold>">
+  Winner's bid close to next lowest (threshold is a ratio):
+  
+  ```rust
+  settings.R024 = Some(FloatThreshold {
+      threshold: Some(0.05),  // 5% difference
+  });
+  ```
+</ParamField>
+
+<ParamField path="R025" type="Option<R025>">
+  Frequent winner:
+  
+  ```rust
+  settings.R025 = Some(R025 {
+      percentile: Some(75),
+      threshold: Some(0.05),
+  });
+  ```
+</ParamField>
+
+<ParamField path="R028" type="Option<Empty>">
+  Single bidder wins (no configuration):
+  
+  ```rust
+  settings.R028 = Some(Default::default());
+  ```
+</ParamField>
+
+<ParamField path="R030" type="Option<Empty>">
+  Bids differ by same amount:
+  
+  ```rust
+  settings.R030 = Some(Default::default());
+  ```
+</ParamField>
+
+<ParamField path="R035" type="Option<IntegerThreshold>">
+  Supplier awarded many contracts:
+  
+  ```rust
+  settings.R035 = Some(IntegerThreshold {
+      threshold: Some(1),  // Count
+  });
+  ```
+</ParamField>
+
+<ParamField path="R036" type="Option<Empty>">
+  Supplier offered identical prices:
+  
+  ```rust
+  settings.R036 = Some(Default::default());
+  ```
+</ParamField>
+
+<ParamField path="R038" type="Option<R038>">
+  Many disqualified bids:
+  
+  ```rust
+  settings.R038 = Some(R038 {
+      threshold: Some(0.5),  // 50% ratio
+      minimum_submitted_bids: Some(2),
+      minimum_contracting_processes: Some(2),
+  });
+  ```
+</ParamField>
+
+<ParamField path="R048" type="Option<R048>">
+  Item classification patterns:
+  
+  ```rust
+  settings.R048 = Some(R048 {
+      digits: Some(2),
+      threshold: Some(10),
+      minimum_contracting_processes: Some(20),
+  });
+  ```
+</ParamField>
+
+<ParamField path="R058" type="Option<FloatThreshold>">
+  Winner's bid close to next lowest (alternative calculation):
+  
+  ```rust
+  settings.R058 = Some(FloatThreshold {
+      threshold: Some(0.5),
+  });
+  ```
+</ParamField>
+
+## Result Structure
+
+The `Indicators` struct contains the calculated results:
+
+```rust
+pub struct Indicators {
+    pub results: IndexMap<Group, IndexMap<String, HashMap<Indicator, f64>>>,
+    pub meta: HashMap<Indicator, RoundMap>,
+    pub maps: Maps,
+    // ... internal fields
+}
+```
+
+### Accessing Results
+
+<ResponseField name="results" type="IndexMap<Group, IndexMap<String, HashMap<Indicator, f64>>>">
+  Nested map structure:
+  1. **Group**: Entity type (OCID, Buyer, ProcuringEntity, Tenderer)
+  2. **String**: Entity ID (e.g., OCID value or organization ID)
+  3. **HashMap**: Indicator scores for that entity
+  
+  ```rust
+  let results = indicators.results();
+  
+  // Iterate over all results
+  for (group, entities) in results {
+      println!("Group: {:?}", group);
+      for (entity_id, scores) in entities {
+          for (indicator, score) in scores {
+              println!("  {} - {:?}: {}", entity_id, indicator, score);
+          }
+      }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="meta" type="HashMap<Indicator, RoundMap>">
+  Additional metadata for indicators, such as intermediate calculations or statistics.
+</ResponseField>
+
+<ResponseField name="maps" type="Maps">
+  Relationships between entities (only populated if `map = true`):
+  
+  ```rust
+  pub struct Maps {
+      pub ocid_buyer_r038: HashMap<String, String>,
+      pub ocid_procuringentity_r038: HashMap<String, String>,
+      pub ocid_tenderer: HashMap<String, HashSet<String>>,
+      pub ocid_tenderer_r024: HashMap<String, HashSet<String>>,
+      pub ocid_tenderer_r028: HashMap<String, HashSet<String>>,
+      pub ocid_tenderer_r030: HashMap<String, HashSet<String>>,
+      pub ocid_tenderer_r035: HashMap<String, HashSet<String>>,
+      pub ocid_tenderer_r058: HashMap<String, HashSet<String>>,
+  }
+  ```
+</ResponseField>
+
+## Complete Example
+
+```rust
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use ocdscardinal::{Indicators, Settings, R038, Group, Indicator};
+
+fn analyze_procurement_data() -> Result<(), anyhow::Error> {
+    let file = File::open("data/releases.jsonl")?;
+    let reader = BufReader::new(file);
+    
+    // Configure multiple indicators
+    let mut settings = Settings::default();
+    settings.currency = Some("USD".to_string());
+    settings.R036 = Some(Default::default());
+    settings.R038 = Some(R038 {
+        threshold: Some(0.5),
+        minimum_submitted_bids: Some(2),
+        minimum_contracting_processes: Some(2),
+    });
+    
+    // Calculate with mapping enabled
+    let results = Indicators::run(reader, settings, &true)?;
+    
+    // Find contracting processes with high disqualification rates
+    if let Some(ocids) = results.results().get(&Group::OCID) {
+        for (ocid, scores) in ocids {
+            if let Some(score) = scores.get(&Indicator::R038) {
+                if *score > 0.6 {
+                    println!("High disqualification rate in {}: {:.1}%", 
+                             ocid, score * 100.0);
+                    
+                    // Access mapping data
+                    if let Some(tenderers) = results.maps.ocid_tenderer.get(ocid) {
+                        println!("  Tenderers: {:?}", tenderers);
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Performance
+
+- **Parallel processing**: Uses Rayon for automatic parallelization
+- **Streaming**: Processes data in chunks without loading entire file into memory
+- **Scalability**: Can handle millions of releases efficiently
+
+<Tip>
+For best performance, ensure the input buffer is properly sized. `BufReader::new()` uses an 8KB buffer by default, but you can create a larger buffer with `BufReader::with_capacity()`.
+</Tip>
+
+## Notes
+
+- Contracting processes with `tender.status = "cancelled"` are automatically excluded
+- Awards must have a final status (`active`, `cancelled`, or `unsuccessful`) for results to be stable
+- Bids with status `invited` or `withdrawn` are not considered "submitted"
+- Invalid JSON lines are logged and skipped without stopping execution
+
+## Related
+
+- [CLI Indicators Command](/cli/indicators)
+- [Indicator Descriptions](/cli/indicators/R)
+- [Settings Reference](/topics/settings)

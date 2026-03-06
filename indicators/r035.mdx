@@ -1,0 +1,95 @@
+---
+title: "R035: All except winning bid disqualified"
+description: "Detects when bids are disqualified if not submitted by the single winner"
+---
+
+Bids are disqualified if not submitted by the single tenderer of the winning bid.
+
+<Note>
+See also: [R038 - Excessive disqualified bids](/indicators/r038)
+</Note>
+
+## Methodology
+
+A contracting process is flagged if:
+
+- Exactly one tenderer submitted one or more bids that are valid (i.e. qualified).
+- The tenderer of the valid bids and the suppliers of all active awards are the same.
+- At least 1 other tenderer submitted a bid that was disqualified. (1 is the **threshold**.)
+
+The winner is also flagged.
+
+<Tip>
+**Example**
+
+The National Rail Service receives five bids. It disqualifies four bids, and awards the contract to the remaining bid from CorruptX Solutions.
+</Tip>
+
+<Info>
+**Why is this a red flag?**
+
+A corrupt buyer can award the pre-determined bidder by disqualifying other bidders' bids.
+</Info>
+
+<sub>Based on "Exclusion of all but one bid" in [*An Objective Corruption Risk Index Using Public Procurement Data*](https://www.researchgate.net/publication/301646354_An_Objective_Corruption_Risk_Index_Using_Public_Procurement_Data) and "Prevalence of faulty bids" in [*Toolkit for detecting collusive bidding in public procurement*](https://www.govtransparency.eu/wp-content/uploads/2015/11/GTI_WP2014_2_Toth_et_al_150413.pdf).</sub>
+
+## Output
+
+The indicator's value for the contracting process is the number of unique tenderers with disqualified bids.
+
+The indicator's value for the tenderer is always 0.0.
+
+If the `--map` command-line flag is set, the `Maps` key contains:
+
+<ParamField path="ocid_tenderer_r035" type="map">
+  The flagged tenderers for each flagged `ocid`.
+</ParamField>
+
+## Configuration
+
+All configuration is optional. If you observe many false positives among contracting processes with few submitted bids, you can increase the threshold. 
+
+To override the default **threshold**, add to your settings file:
+
+<ParamField path="R035.threshold" type="integer" default={1}>
+  Minimum number of tenderers with disqualified bids required to flag the process. Must be at least 1.
+</ParamField>
+
+```ini
+[R035]
+threshold = 1 # default
+```
+
+## Exclusions
+
+A contracting process is excluded if:
+
+- An award's status is pending or invalid.
+
+## Implementation Details
+
+The indicator (from `src/indicators/r035.rs`):
+
+- Collects all supplier IDs from complete active awards
+- Tracks tenderer IDs from valid and disqualified bids
+- Only applies to single tenderers/winners (multiple winners are excluded)
+- Counts the number of disqualified tenderers that are not the winning tenderer
+- Flags the process if the count meets or exceeds the threshold
+
+## Demonstration
+
+**Input**
+
+```json
+// Example OCDS release with one valid bid and multiple disqualified bids
+```
+
+**Output**
+
+```bash
+ocdscardinal indicators --settings docs/examples/R/035.ini --no-meta docs/examples/R/035.jsonl
+```
+
+```json
+{"OCID":{"F":{"R035":1.0}},"Tenderer":{"V":{"R035":0.0}}}
+```

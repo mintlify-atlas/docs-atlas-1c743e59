@@ -1,0 +1,305 @@
+---
+title: cardinal prepare
+description: Correct quality issues within OCDS compiled releases
+---
+
+The `prepare` command corrects quality issues within OCDS compiled releases in a line-delimited JSON file. Corrected data is written to one file, and quality issues are written to another file as CSV for review.
+
+<Note>
+This command is designed to only warn about quality issues that (1) it can fix and (2) that interfere with the calculation of indicators. For comprehensive quality checking, consider using [Pelican](https://www.open-contracting.org/2020/01/28/meet-pelican-our-new-tool-for-assessing-the-quality-of-open-contracting-data/).
+</Note>
+
+## Command Syntax
+
+```bash
+cardinal prepare [OPTIONS] --output <OUTPUT> --errors <ERRORS> <FILE>
+```
+
+### Arguments
+
+<ParamField path="FILE" type="string" required>
+  The path to the input file (or `-` for standard input), in which each line is a contracting process as JSON text.
+</ParamField>
+
+### Options
+
+<ParamField path="--settings" type="string">
+  The path to the settings file. Use `-s` as a shorthand. If not provided, default settings are used.
+</ParamField>
+
+<ParamField path="--output" type="string" required>
+  The file to which to write corrected data (or `-` for standard output). Use `-o` as a shorthand.
+</ParamField>
+
+<ParamField path="--errors" type="string" required>
+  The file to which to write quality issues (or `-` for standard output). Use `-e` as a shorthand.
+</ParamField>
+
+<ParamField path="--verbose" type="flag">
+  Increase verbosity. Use `-v` as a shorthand. Can be repeated for more verbosity.
+</ParamField>
+
+## Output Format
+
+### Corrected Data
+
+Corrected data is written as line-delimited JSON, with one compiled release per line.
+
+### Quality Issues
+
+Quality issues are written as CSV rows with these columns:
+
+| Column | Description |
+|--------|-------------|
+| **line** | Line number of the problematic compiled release in the input file |
+| **ocid** | OCID of the problematic compiled release (for finding it in other systems) |
+| **path** | JSON path to the field with an issue (useful for sorting and filtering) |
+| **array indexes** | Index of the problematic array entry (if path contains arrays) |
+| **incorrect value** | The value that caused the issue (blank if field isn't set) |
+| **error description** | Description of the issue (see table below) |
+
+#### Error Descriptions
+
+| Error Description | Meaning | Solution |
+|-------------------|---------|----------|
+| **not set** | The field isn't set | [Fill in missing values](#fill-in-missing-values) |
+| **invalid** | The code isn't valid | [Re-map incorrect codes](#re-map-invalid-codes) |
+| **is zero** | The bid's value is zero | [Redact incorrect values](#redact-incorrect-values) |
+
+## Usage Examples
+
+<CodeGroup>
+
+```bash Basic usage
+cardinal prepare --output prepared.jsonl --errors issues.csv input.jsonl
+```
+
+```bash With settings file
+cardinal prepare --settings settings.ini \
+  --output prepared.jsonl \
+  --errors issues.csv \
+  input.jsonl
+```
+
+```bash Using stdin/stdout
+cat input.jsonl | cardinal prepare \
+  --settings settings.ini \
+  --output - \
+  --errors issues.csv \
+  - > prepared.jsonl
+```
+
+```bash Preview errors only
+cardinal prepare --output prepared.jsonl --errors - input.jsonl
+```
+
+</CodeGroup>
+
+### Example Quality Issues Output
+
+Given this input file with a bid missing a status:
+
+```json
+{"ocid":"ocds-213czf-1","bids":{"details":[{"id":1}]}}
+```
+
+The errors CSV output would be:
+
+```csv
+line,ocid,path,array indexes,incorrect value,error description
+1,ocds-213czf-1,/bids/details[]/status,0,,not set
+```
+
+## Configuration
+
+The `prepare` command can be configured through a settings file. Initialize one with:
+
+```bash
+cardinal init settings.ini
+```
+
+### Automatic Corrections
+
+These corrections are always applied and cannot be disabled:
+
+#### Correct Structural Errors
+
+Replaces objects with arrays where OCDS expects arrays:
+- `/bids/details[]/tenderers`
+- `/awards/suppliers`
+
+#### Normalize ID Fields
+
+Converts ID fields from integers to strings to prevent lookup failures:
+- `/parties[]/id`
+- `/buyer/id`
+- `/tender/procuringEntity/id`
+- `/bids/details[]/tenderers[]/id`
+- `/awards[]/id`
+- `/awards[]/suppliers[]/id`
+- `/awards[]/items[]/classification/id`
+- `/contracts[]/awardID`
+
+### Fill in Missing Values
+
+Add a `[defaults]` section to fill in missing fields:
+
+```ini
+[defaults]
+currency = USD
+item_classification_scheme = UNSPSC
+bid_status = valid
+award_status = active
+party_roles = true
+```
+
+Supported fields:
+- `/bids/details[]/value/currency`
+- `/bids/details[]/items[]/classification/scheme`
+- `/bids/details[]/status`
+- `/awards[]/items[]/classification/scheme`
+- `/awards[]/status`
+- `/parties[]/roles[]` (when `party_roles = true`)
+
+### Redact Incorrect Values
+
+#### Monetary Amounts
+
+Redact placeholder amount values:
+
+```ini
+[redactions]
+amount = 0|99999999
+```
+
+Affects: `/bids/details[]/value/amount`
+
+#### Organization IDs
+
+Redact placeholder organization IDs:
+
+```ini
+[redactions]
+organization_id = my-placeholder|dummy-value
+```
+
+Affects:
+- `/parties[]/id`
+- `/buyer/id`
+- `/tender/procuringEntity/id`
+- `/bids/details[]/tenderers[]/id`
+- `/awards[]/suppliers[]/id`
+
+### Re-map Invalid Codes
+
+Substitute invalid codelist values:
+
+```ini
+[codelists.bid_status]
+Qualified = valid
+Disqualified = disqualified
+InTreatment = pending
+
+[codelists.award_status]
+Active = active
+Cancelled = cancelled
+```
+
+### Move Auction Bids
+
+Move non-standard auction bids to the standard location:
+
+```ini
+[modifications]
+move_auctions = true
+```
+
+Moves bids from `/auctions[]/stages[]/bids[]` to `/bids/details[]`.
+
+### Prefix Organization IDs
+
+Add prefixes to organization IDs to match `/parties[]` entries:
+
+```ini
+[modifications]
+prefix_buyer_or_procuring_entity_id = DO-UC-
+prefix_tenderer_or_supplier_id = DO-RPE-
+```
+
+Affects:
+- `/buyer/id`
+- `/tender/procuringEntity/id`
+- `/bids/details[]/tenderers[]/id`
+- `/awards[]/suppliers[]/id`
+
+### Standardize Unconstrained Values
+
+Split and standardize text values:
+
+```ini
+[modifications]
+split_procurement_method_details = -
+```
+
+For example, "Open Bidding - Emergency" becomes "Open Bidding".
+
+Affects: `/tender/procurementMethodDetails`
+
+### Replace Incorrect Award Statuses
+
+Change award status based on contract statuses:
+
+```ini
+[corrections]
+award_status_by_contract_status = true
+```
+
+An award's status is set to cancelled if all related contracts are cancelled.
+
+## Workflow
+
+<Warning>
+Before running `prepare`, follow the data preparation steps in the main workflow documentation.
+</Warning>
+
+<Steps>
+  <Step title="Initialize settings">
+    Create a settings file:
+    ```bash
+    cardinal init settings.ini
+    ```
+  </Step>
+  
+  <Step title="Run prepare command">
+    Process your data:
+    ```bash
+    cardinal prepare --settings settings.ini \
+      --output prepared.jsonl \
+      --errors issues.csv \
+      input.jsonl
+    ```
+  </Step>
+  
+  <Step title="Review quality issues">
+    Open `issues.csv` in a spreadsheet application to review problems. Most issues are repetitive and can be fixed at once with configuration changes.
+  </Step>
+  
+  <Step title="Adjust configuration">
+    Update `settings.ini` to fix the quality issues identified in the previous step.
+  </Step>
+  
+  <Step title="Iterate">
+    Repeat steps 2-4 until you're satisfied with the results.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Indicators Command" icon="flag" href="/commands/indicators">
+    Calculate procurement indicators from prepared data
+  </Card>
+  <Card title="Coverage Command" icon="chart-line" href="/commands/coverage">
+    Analyze field coverage in your data
+  </Card>
+</CardGroup>

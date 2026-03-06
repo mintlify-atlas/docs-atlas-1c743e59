@@ -1,0 +1,79 @@
+---
+title: "R036: Lowest bid disqualified"
+description: "Detects when the lowest submitted bid is disqualified while the award criterion is price only"
+---
+
+The lowest submitted bid is disqualified, while the award criterion is price only.
+
+## Methodology
+
+A contracting process is flagged if:
+
+- There are one or more active awards.
+- There are one or more valid bids with amounts.
+- The lowest submitted bid is disqualified.
+
+<Tip>
+**Example**
+
+The Public Works Department sets the award criterion as lowest price. FairDeal Inc. submits a bid of $100,000. BribeCorp submits a bid of $111,111. The Public Works Department disqualifies the bid from FairDeal Inc.
+</Tip>
+
+<Info>
+**Why is this a red flag?**
+
+A corrupt buyer can award the pre-determined bidder by disqualifying lower-priced bids.
+</Info>
+
+<sub>Based on "The lowest bid is rejected almost inexplicably" in [*Fraud in Public Procurement: A collection of Red Flags and Best Practices*](https://ec.europa.eu/sfc/system/files/documents/sfc-files/fraud-public-procurement-final-20122017-ares20176254403.pdf), "Lowest bidder not selected" in [*Common Red Flags of Fraud and Corruption in Procurement*](https://web.archive.org/web/20200918183744/https://www.worldbank.org/en/about/unit/integrity-vice-presidency/brief/common-red-flags-of-fraud-and-corruption-in-procurement), and "Award to other than lowest qualified bidder" in [*Guide to Combating Corruption & Fraud in Infrastructure Development Projects*](https://guide.iacrc.org/red-flag-award-to-other-than-lowest-qualified-bidder/).</sub>
+
+## Output
+
+The indicator's value is always 1.0.
+
+## Configuration
+
+The indicator is not configurable at the indicator level.
+
+<Note>
+See global settings for `no_price_comparison_procurement_methods` and `price_comparison_procurement_methods` to control when price comparison indicators are applied.
+</Note>
+
+## Implementation Details
+
+The indicator (from `src/indicators/r036.rs`):
+
+- Only applies to procurement methods where price comparison is relevant
+- Tracks the lowest bid amount across all submitted bids
+- Handles currency matching (skips bids with mismatched currencies)
+- Checks if the lowest bid has status "disqualified"
+- Requires at least one valid bid with an amount to be present
+- Flags the process if the lowest bid is disqualified and there are valid bids
+
+<Warning>
+Bids with different currencies than the first observed currency are skipped. The tool logs warnings about currency mismatches (can be configured to info level).
+</Warning>
+
+## Exclusions
+
+A contracting process is excluded if:
+
+- Prices are predetermined by the buyer (based on procurement method configuration).
+
+## Demonstration
+
+**Input**
+
+```json
+// Example OCDS release with lowest bid disqualified
+```
+
+**Output**
+
+```bash
+ocdscardinal indicators --settings docs/examples/settings.ini --no-meta docs/examples/R/036.jsonl
+```
+
+```json
+{"OCID":{"F":{"R036":1.0}}}
+```

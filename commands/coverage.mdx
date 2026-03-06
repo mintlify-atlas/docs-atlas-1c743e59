@@ -1,0 +1,304 @@
+---
+title: cardinal coverage
+description: Count the number of times each field is non-empty in line-delimited JSON
+---
+
+The `coverage` command analyzes field coverage in line-delimited JSON files. It counts how many times each JSON field contains non-empty data, helping you understand data completeness and identify missing fields.
+
+## Command Syntax
+
+```bash
+cardinal coverage [OPTIONS] <FILE>
+```
+
+### Arguments
+
+<ParamField path="FILE" type="string" required>
+  The path to the input file (or `-` for standard input), in which each line is JSON text.
+</ParamField>
+
+### Options
+
+<ParamField path="--verbose" type="flag">
+  Increase verbosity. Use `-v` as a shorthand. Can be repeated for more verbosity.
+</ParamField>
+
+## How It Works
+
+The command walks the JSON tree and counts non-empty nodes. A node is considered empty if it is:
+
+- An empty string: `""`
+- An empty array: `[]`
+- An empty object: `{}`
+- Null: `null`
+- A node containing only empty nodes
+
+The result is a JSON object where:
+- **Keys** are JSON paths
+- **Values** are counts of non-empty occurrences
+
+### Path Notation
+
+| Path Format | Represents |
+|-------------|------------|
+| `""` | A line in the file |
+| `/` | An object |
+| `[]` (at end) | An array element |
+| Other paths | Object members |
+
+## Usage Examples
+
+<CodeGroup>
+
+```bash Basic usage
+cardinal coverage data.jsonl
+```
+
+```bash From stdin
+cat data.jsonl | cardinal coverage -
+```
+
+```bash Save to file
+cardinal coverage data.jsonl > coverage-report.json
+```
+
+</CodeGroup>
+
+### Example Input and Output
+
+Given this input file `example.jsonl`:
+
+```json
+{"phoneNumbers": [{"type": "home", "number": "212 555-1234"}, {"type": "office", "number": "646 555-4567"}]}
+```
+
+Running the command:
+
+```bash
+cardinal coverage example.jsonl
+```
+
+Produces this output:
+
+```json
+{
+  "/phoneNumbers[]/type": 2,
+  "/phoneNumbers[]/number": 2,
+  "/phoneNumbers[]/": 2,
+  "/phoneNumbers[]": 2,
+  "/phoneNumbers": 1,
+  "/": 1,
+  "": 1
+}
+```
+
+### Interpreting Results
+
+From the example above:
+
+| Path | Count | Meaning |
+|------|-------|----------|
+| `""` | 1 | One line in the file |
+| `/` | 1 | One root object |
+| `/phoneNumbers` | 1 | The phoneNumbers field appears once |
+| `/phoneNumbers[]` | 2 | Two array elements in phoneNumbers |
+| `/phoneNumbers[]/` | 2 | Both array elements are objects |
+| `/phoneNumbers[]/type` | 2 | Both objects have a type field |
+| `/phoneNumbers[]/number` | 2 | Both objects have a number field |
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Data Quality Assessment" icon="magnifying-glass-chart">
+    Identify which fields are consistently populated vs. frequently missing
+  </Card>
+  
+  <Card title="Schema Validation" icon="check-double">
+    Verify that required fields are present in your OCDS data
+  </Card>
+  
+  <Card title="Data Completeness" icon="list-check">
+    Measure how complete your data is before running indicators
+  </Card>
+  
+  <Card title="Field Discovery" icon="compass">
+    Discover what fields exist in unfamiliar datasets
+  </Card>
+</CardGroup>
+
+## Analyzing OCDS Data
+
+For OCDS compiled releases, coverage analysis helps identify:
+
+<AccordionGroup>
+  <Accordion title="Critical Missing Fields">
+    Fields required for indicator calculations:
+    - `/ocid`
+    - `/buyer/id`
+    - `/tender/procuringEntity/id`
+    - `/bids/details[]/tenderers[]/id`
+    - `/awards[]/status`
+  </Accordion>
+  
+  <Accordion title="Bid Information Completeness">
+    Check if bid data is well-populated:
+    - `/bids/details[]/value/amount`
+    - `/bids/details[]/value/currency`
+    - `/bids/details[]/status`
+    - `/bids/details[]/date`
+  </Accordion>
+  
+  <Accordion title="Award Information">
+    Verify award data availability:
+    - `/awards[]/value/amount`
+    - `/awards[]/suppliers[]/id`
+    - `/awards[]/items[]/classification/id`
+  </Accordion>
+  
+  <Accordion title="Tender Information">
+    Assess tender data coverage:
+    - `/tender/tenderPeriod/startDate`
+    - `/tender/tenderPeriod/endDate`
+    - `/tender/procurementMethod`
+    - `/tender/procurementMethodDetails`
+  </Accordion>
+</AccordionGroup>
+
+### Recommended Workflow
+
+<Steps>
+  <Step title="Run coverage analysis">
+    Analyze your raw OCDS data:
+    ```bash
+    cardinal coverage input.jsonl > coverage-raw.json
+    ```
+  </Step>
+  
+  <Step title="Review missing fields">
+    Examine the coverage report to identify fields with low counts. These may need to be filled in via the `prepare` command configuration.
+  </Step>
+  
+  <Step title="Configure prepare command">
+    Update your settings file to fill in missing values:
+    ```ini
+    [defaults]
+    currency = USD
+    bid_status = valid
+    ```
+  </Step>
+  
+  <Step title="Re-run coverage after preparation">
+    Compare coverage before and after:
+    ```bash
+    cardinal prepare --settings settings.ini --output prepared.jsonl --errors errors.csv input.jsonl
+    cardinal coverage prepared.jsonl > coverage-prepared.json
+    ```
+  </Step>
+</Steps>
+
+## Edge Cases
+
+<Warning>
+These edge cases are not expected in typical OCDS data but are documented for completeness.
+</Warning>
+
+### Duplicate Member Names
+
+If a member name appears multiple times in an object, only the last occurrence is counted:
+
+**Input:**
+```json
+{"a": 1, "a": ""}
+```
+
+**Output:**
+```json
+{}
+```
+
+### Empty Member Names
+
+If a member name is empty, its path is the same as its parent object's path:
+
+**Input:**
+```json
+{"": "value", "other": "value"}
+```
+
+**Output:**
+```json
+{"/": 2, "": 1}
+```
+
+### Member Names Ending with `[]`
+
+If a member name ends with `[]`, its path can collide with array notation:
+
+**Input:**
+```json
+{"a": [1], "a[]": 2}
+```
+
+**Output:**
+```json
+{"/a[]": 2, "/a": 1, "/": 1, "": 1}
+```
+
+## Output Format Details
+
+The output is a single-line JSON object. For easier reading, you can pipe it through `jq`:
+
+```bash
+cardinal coverage data.jsonl | jq .
+```
+
+Pretty-printed output:
+
+```json
+{
+  "/phoneNumbers[]/type": 2,
+  "/phoneNumbers[]/number": 2,
+  "/phoneNumbers[]/": 2,
+  "/phoneNumbers[]": 2,
+  "/phoneNumbers": 1,
+  "/": 1,
+  "": 1
+}
+```
+
+## Tips for Large Files
+
+For very large datasets:
+
+<Tabs>
+  <Tab title="Sample the data">
+    ```bash
+    head -n 1000 large-file.jsonl | cardinal coverage - > sample-coverage.json
+    ```
+  </Tab>
+  
+  <Tab title="Split by time period">
+    ```bash
+    # Analyze recent data only
+    grep '"2024-' large-file.jsonl | cardinal coverage - > 2024-coverage.json
+    ```
+  </Tab>
+  
+  <Tab title="Increase verbosity">
+    ```bash
+    # See progress information
+    cardinal coverage -vv large-file.jsonl > coverage.json
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prepare Command" icon="wrench" href="/commands/prepare">
+    Fix missing fields identified by coverage analysis
+  </Card>
+  <Card title="Indicators Command" icon="flag" href="/commands/indicators">
+    Calculate indicators once data coverage is sufficient
+  </Card>
+</CardGroup>

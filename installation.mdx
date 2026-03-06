@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Install Cardinal using Cargo, pip, or npm"
+description: "Install Cardinal using Cargo or pip"
 ---
 
 ## Overview
@@ -129,25 +129,20 @@ The Python package includes pre-compiled binaries for common platforms.
 
 ### Using Python Bindings
 
-The Python API provides the same functionality as the CLI:
+The Python package provides the `coverage()` function for analyzing field coverage in OCDS data:
 
 ```python
 import ocdscardinal
 
-# Initialize settings
-settings = ocdscardinal.Settings()
-
-# Prepare data
-prepare = ocdscardinal.Prepare()
-# ... (API documentation coming soon)
-
-# Calculate indicators
-indicators = ocdscardinal.Indicators()
-# ... (API documentation coming soon)
+# Analyze field coverage
+result = ocdscardinal.coverage("data.jsonl")
+print(result)  # Dictionary mapping paths to counts
 ```
 
+For the full functionality (prepare, indicators, init), use the CLI tool installed via Cargo.
+
 <Info>
-  Detailed Python API documentation is coming soon. For now, refer to the CLI documentation and adapt commands to Python function calls.
+  See the [Python API documentation](/api/python/overview) for complete details on the `coverage()` function.
 </Info>
 
 ## Build from Source
